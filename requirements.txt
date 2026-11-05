@@ -1,0 +1,8 @@
+soundcard
+pycaw
+numpy
+comtypes
+pystray
+pillow
+sv-ttk
+darkdetect
