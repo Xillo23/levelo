@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.4 (beta)
+
+- The "Windows volume was almost at maximum" note no longer stays in the panel: it is
+  shown once as a notification, and explained in Settings → General while it applies.
+- Fixed: after many hours of running, quitting Levelo could take too long, and a Levelo
+  started right after could close by itself. Quitting now always takes a couple of
+  seconds and restores all volumes first.
+- Updates: if an old version doesn't close in time, the installer closes it anyway (the
+  new version restores any volume left lowered on its first start).
+- Faster scan of the running apps.
+
 ## 0.9.3 (beta)
 
 - Settings window rebuilt for smoothness: pages are built once and then only updated,

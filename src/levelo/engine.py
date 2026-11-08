@@ -640,7 +640,8 @@ class Engine(threading.Thread):
         for w in list(self.workers.values()):
             w.cmds.put(("apps", (self.call_protect, dict(self.app_rules))))
 
-    def shutdown(self, timeout=2.5):
+    def shutdown(self, timeout=6.0):
+        """Stop and put every volume back (waits for the device threads)."""
         self.alive = False
         self.finished.wait(timeout)
 
@@ -747,10 +748,16 @@ class Engine(threading.Thread):
                 continue
         try:
             import psutil
-            for p in psutil.process_iter(["name", "exe"]):
+            for p in psutil.process_iter(["name"]):
+                if not self.alive:
+                    break
                 name = p.info.get("name") or ""
                 if name.lower() in MEDIA_APPS and name not in out:
-                    out[name] = (name, p.info.get("exe") or "", False)
+                    try:
+                        exe = p.exe()           # only for the few that match: fast
+                    except Exception:
+                        exe = ""
+                    out[name] = (name, exe, False)
         except Exception:
             pass
         self.other_apps = tuple(out.values())
@@ -842,9 +849,10 @@ class Engine(threading.Thread):
                         log(f"devices: {self.error}")
                 time.sleep(0.1)
         finally:
-            for dev_id in list(self.workers):
-                w = self.workers[dev_id]
+            workers = list(self.workers.values())
+            for w in workers:          # all devices restore their volumes in parallel
                 w.stop()
-            for w in list(self.workers.values()):
-                w.finished.wait(2.5)
+            deadline = time.monotonic() + 5.0
+            for w in workers:
+                w.finished.wait(max(0.0, deadline - time.monotonic()))
             self.finished.set()

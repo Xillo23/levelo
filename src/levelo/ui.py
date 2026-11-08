@@ -67,7 +67,8 @@ class App:
             "device_names": {},     # their names, shown while they are disconnected
             "call_protect": True,   # never touch voice-call apps
             "app_rules": {},        # app name (lowercase) -> balance it? (only exceptions)
-            "seen_apps": {}})       # apps seen recently, listed in the settings
+            "seen_apps": {},        # apps seen recently, listed in the settings
+            "headroom_tip": False})  # "Windows volume at maximum" told once
         s = self.settings
         s["preset"] = OLD_PRESET_NAMES.get(s["preset"], s["preset"])
         if s.pop("donated", False) and not s["donor_until"]:
@@ -133,11 +134,13 @@ class App:
         if s.get("device_mode") not in ("auto", "manual"):
             s["device_mode"] = "auto"
         s["call_protect"] = bool(s.get("call_protect", True))
+        if s["stats_hours"] > 0:
+            s["headroom_tip"] = True    # older versions already showed it in the panel
         self._save()
 
     def run(self):
         self.root.mainloop()
-        self.engine.shutdown()
+        self.engine.shutdown()     # volumes are back before the process ends
 
     def post(self, fn):
         self.ui_q.put(fn)
@@ -712,6 +715,14 @@ class App:
             self._last_seen = time.monotonic()
             if remember_apps(self.settings, self.engine.apps, self.engine.other_apps):
                 self._save()
+        if (not self.settings["headroom_tip"] and self.settings["enabled"]
+                and self.engine.headroom_short):
+            self.settings["headroom_tip"] = True     # tell it once, never nag
+            self._save()
+            try:
+                self.tray.notify(t("warn_headroom"), APP_NAME)
+            except Exception:
+                pass
         if time.monotonic() - self._last_theme > 3.0:
             self._last_theme = time.monotonic()
             self._follow_theme()
@@ -753,8 +764,6 @@ class App:
         if eng.device_missing:
             off = split_device_name(s["device_names"].get(eng.missing[0], "?"))[0]
             warn = t("warn_device", name=self._short(off, 30))
-        elif s["enabled"] and eng.headroom_short:
-            warn = t("warn_headroom")
         if warn:
             self.warn.config(text=warn)
             self.warn.pack_configure(pady=(self.px(8), 0))

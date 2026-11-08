@@ -111,6 +111,10 @@ var
 begin
   if FileExists(Exe) then
     Exec(Exe, '--quit', '', SW_HIDE, ewWaitUntilTerminated, RC);
+  { Safety net: if it is still running, close it anyway so no file stays locked.
+    The new version puts any lowered volume back on its first start (restore.json). }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Levelo.exe', '', SW_HIDE,
+       ewWaitUntilTerminated, RC);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

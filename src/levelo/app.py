@@ -7,6 +7,7 @@
 
 from . import _bootstrap  # noqa: F401  (must come first)
 
+import os
 import sys
 
 from .winsys import SingleInstance
@@ -24,4 +25,6 @@ def main(argv=None):
         return 0
     from .ui import App
     App(background="--background" in argv, instance=instance).run()
-    return 0
+    # Everything is saved and every volume restored at this point: end the process
+    # now, so no leftover thread (tray icon, network check) can keep it alive.
+    os._exit(0)

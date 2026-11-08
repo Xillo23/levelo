@@ -82,10 +82,11 @@ class Card:
             self.icon = tk.Label(c, text=glyph, font=(app.icon_font, 14), bg=pal["card"],
                                  fg=pal["fg"], bd=0)
         self.icon.grid(row=0, column=0, rowspan=2, padx=(px(16), px(14)), pady=px(12))
+        # an initial wrap width: a long text can never push the window wider
         self.title = tk.Label(c, text=title, bg=pal["card"], fg=pal["fg"], font=app.F["body"],
-                              bd=0, anchor="w", justify="left")
+                              bd=0, anchor="w", justify="left", wraplength=px(420))
         self.desc = tk.Label(c, text=desc, bg=pal["card"], fg=pal["sub"], font=app.F["small"],
-                             bd=0, anchor="w", justify="left")
+                             bd=0, anchor="w", justify="left", wraplength=px(420))
         if desc:
             self.title.grid(row=0, column=1, sticky="sew", pady=(px(11), 0))
             self.desc.grid(row=1, column=1, sticky="new", pady=(px(1), px(11)))
@@ -306,7 +307,7 @@ class SettingsWindow:
         fg = {"sub": pal["sub"], "body": pal["fg"], "warn": pal["cut"]}[kind]
         font = app.F["body"] if kind == "body" else app.F["small"]
         lbl = tk.Label(parent or self.body, text=text, bg=pal["bg"], fg=fg, font=font, bd=0,
-                       justify="left", anchor="w")
+                       justify="left", anchor="w", wraplength=px(480))
         lbl.pack(fill="x", padx=px(14), pady=pady)
         self.paras.append(lbl)
         return lbl
@@ -373,13 +374,24 @@ class SettingsWindow:
         cb.bind("<<ComboboxSelected>>", lambda e: (
             cb.selection_clear(), app.set_language(codes[names.index(lang.get())])))
 
+        info = {"card": None}
+
         def update():   # changes made from the panel or the tray menu
+            show = s["enabled"] and app.engine.headroom_short
+            if show and info["card"] is None:
+                info["card"] = self.card(G["info"], t("headroom_title"), t("warn_headroom"))
+                self.win.update_idletasks()
+                self._relayout()
+            elif not show and info["card"] is not None:
+                info["card"].outer.destroy()
+                info["card"] = None
             self.sync(on.var, s["enabled"])
             if preset.get() != s["preset"]:
                 preset.set(s["preset"])
                 pc.set_desc(t(f"desc_{s['preset']}"))
             self.sync(auto.var, winsys.autostart_enabled())
         self._update = update
+        update()
 
     # ---------------------------------------------------------------- devices
     def _page_devices(self):

@@ -85,12 +85,14 @@ class SingleInstance:
         self.mutex = k32.CreateMutexW(None, False, f"Local\\{APP_ID}.Instance")
         self.already = k32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
         self.ev_show = k32.CreateEventW(None, False, False, f"Local\\{APP_ID}.Show")
-        self.ev_quit = k32.CreateEventW(None, True, False, f"Local\\{APP_ID}.Quit")
+        # auto-reset: consumed by the instance that quits, so it can never close
+        # a Levelo started right after
+        self.ev_quit = k32.CreateEventW(None, False, False, f"Local\\{APP_ID}.Quit")
 
     def signal_show(self):
         self.k32.SetEvent(ctypes.c_void_p(self.ev_show))
 
-    def signal_quit(self, wait_s=6.0):
+    def signal_quit(self, wait_s=12.0):
         """Ask the running instance to exit cleanly and wait for it."""
         self.k32.SetEvent(ctypes.c_void_p(self.ev_quit))
         self.k32.CloseHandle(ctypes.c_void_p(self.mutex))
