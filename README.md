@@ -57,7 +57,7 @@ There's nothing to do: set the volume as you always do. Click the tray icon to o
 | Live graph | What it's doing right now: ▲ raising, ▼ lowering. |
 | Intensity | **Light**: keeps the movie's dynamics · **Normal**: recommended · **Night**: maximum leveling |
 | Start with Windows | Starts hidden in the notification area at login. |
-| ⚙ Settings | Output device, voice calls, which apps to balance. |
+| ⚙ Settings | Opens the Settings window: devices, apps, voice calls, language. |
 
 Right-click the icon for the menu: intensity, settings, language, start with Windows, quit.
 
@@ -103,11 +103,12 @@ antivirus vendor, and open an issue so we can track it.
 
 **Does it work with headphones / Bluetooth / HDMI?**
 Yes. By default it follows the current Windows default output device and switches with
-it. In Settings you can pick a specific device instead.
+it. In Settings → *Devices* you can choose one or more devices to balance at the same time
+(for example speakers and headphones).
 
 **Can I exclude an app?**
-Yes: Settings → *Apps to balance*, turn its switch off. Voice-call apps are excluded
-automatically.
+Yes: Settings → *Apps*, turn its switch off (or use *Add an app…* if it isn't listed yet).
+Voice-call apps are excluded automatically.
 
 **Does it connect to the internet?**
 Only to check for updates: twice a day it downloads two public files from this GitHub

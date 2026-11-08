@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.2 (beta)
+
+- New **Settings window**, like the Windows 11 Settings app: General, Devices, Apps,
+  Calls, About. Open it from the ⚙ gear in the panel or from the tray menu.
+- **Several devices at once**: balance speakers and headphones (or any outputs)
+  together. *Automatic* still follows the Windows default device.
+- **Complete app list** with real names and icons: apps playing now, apps open on any
+  device, common media and call apps that are running, and apps seen before. Search,
+  "Add an app…" to exclude one that isn't listed yet.
+- Updates keep everything: settings, statistics and your "Start with Windows" choice
+  (the installer no longer changes it on updates).
+- Settings files keep a backup copy, used automatically if a file gets damaged.
+- All new texts translated in the 11 languages; a test now checks every translation.
+
 ## 0.9.1 (beta)
 
 - New **Settings** page (gear icon in the panel, or "Settings" in the tray menu).

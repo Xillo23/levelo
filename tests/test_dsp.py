@@ -150,6 +150,31 @@ class TranslationsTest(unittest.TestCase):
         for code in LANGUAGES:
             self.assertEqual(set(STRINGS[code]), keys, code)
 
+    def test_placeholders_match(self):
+        """Every translation uses the same {placeholders} as English, and none is empty."""
+        import re
+        from levelo.i18n import LANGUAGES, STRINGS
+        ph = re.compile(r"{(\w*)}")
+        for key, en in STRINGS["en"].items():
+            for code in LANGUAGES:
+                text = STRINGS[code][key]
+                self.assertTrue(text.strip(), f"{code}.{key} is empty")
+                self.assertEqual(sorted(ph.findall(text)), sorted(ph.findall(en)),
+                                 f"{code}.{key}")
+
+    def test_every_used_key_exists(self):
+        """Every t("key") in the code has a translation (no English-key fallback)."""
+        import glob
+        import re
+        from levelo.i18n import STRINGS
+        src = os.path.join(os.path.dirname(__file__), "..", "src", "levelo", "*.py")
+        used = set()
+        for path in glob.glob(src):
+            with open(path, encoding="utf-8") as f:
+                used |= set(re.findall(r'\bt\("([a-z_]+)"', f.read()))
+        self.assertTrue(used)
+        self.assertEqual(sorted(used - set(STRINGS["en"])), [])
+
 
 if __name__ == "__main__":
     unittest.main()

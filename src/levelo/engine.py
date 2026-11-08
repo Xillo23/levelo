@@ -6,6 +6,7 @@ All COM objects live in the engine thread.
 from . import _bootstrap  # noqa: F401  (must come first)
 
 import ctypes
+import json
 import math
 import os
 import queue
@@ -40,6 +41,18 @@ TALK_RATIO = 0.4
 TALK_HOLD_S = 0.4
 CALL_SHOW_S = 15.0       # the panel says "in a call" this long after the last word
 
+# Apps that usually play sound: listed in the settings as soon as they are
+# running, even before they open an audio stream.
+MEDIA_APPS = CALL_APPS | {
+    "chrome.exe", "msedge.exe", "firefox.exe", "opera.exe", "brave.exe", "vivaldi.exe",
+    "arc.exe", "spotify.exe", "vlc.exe", "mpc-hc64.exe", "mpc-hc.exe", "mpc-be64.exe",
+    "potplayermini64.exe", "potplayermini.exe", "mpv.exe", "wmplayer.exe", "music.ui.exe",
+    "video.ui.exe", "microsoft.media.player.exe", "plex.exe", "plex htpc.exe", "kodi.exe",
+    "itunes.exe", "applemusic.exe", "appletv.exe", "deezer.exe", "tidal.exe",
+    "amazon music.exe", "netflix.exe", "disneyplus.exe", "primevideo.exe", "steam.exe",
+    "obs64.exe", "audacity.exe", "foobar2000.exe", "aimp.exe", "musicbee.exe",
+}
+
 
 def new_device_state():
     return {"apps": {}, "master_raised": 0.0, "active": False}
@@ -50,6 +63,8 @@ def load_restore():
     root = load_json(STATE_FILE, {"devices": {}})
     if not isinstance(root.get("devices"), dict):
         root["devices"] = {}
+    if not isinstance(root.get("legacy"), dict):
+        root.pop("legacy", None)
     if "apps" in root:   # 0.9.0: a single state for "the" default device
         apps = root.pop("apps")
         root["legacy"] = {"apps": apps if isinstance(apps, dict) else {},
@@ -63,37 +78,44 @@ def load_restore():
     return root
 
 
-_names = {}
+_procs = {}
 
 
-def process_name(pid):
+def process_info(pid):
+    """(exe name, full path) of a process, cached."""
     if pid == 0:
-        return "System"
-    hit = _names.get(pid)
+        return "System", ""
+    hit = _procs.get(pid)
     if hit is not None:
         return hit
     try:
         import psutil
-        name = psutil.Process(pid).name()
+        p = psutil.Process(pid)
+        name = p.name()
+        try:
+            path = p.exe()
+        except Exception:
+            path = ""
     except Exception:
-        name = f"pid{pid}"
-    if len(_names) > 500:
-        _names.clear()
-    _names[pid] = name
-    return name
+        name, path = f"pid{pid}", ""
+    if len(_procs) > 500:
+        _procs.clear()
+    _procs[pid] = (name, path)
+    return name, path
 
 
 class Session:
-    __slots__ = ("name", "sav", "meter")
+    __slots__ = ("name", "sav", "meter", "path", "playing")
 
-    def __init__(self, name, sav, meter):
+    def __init__(self, name, sav, meter, path="", playing=False):
         self.name, self.sav, self.meter = name, sav, meter
+        self.path, self.playing = path, playing
 
 
 class WinAudio:
     """Master (endpoint) volume + per-app session volumes of ONE output device."""
 
-    def __init__(self, root, device_id):
+    def __init__(self, store, device_id):
         from comtypes import CLSCTX_ALL
         from pycaw.pycaw import (AudioUtilities, IAudioEndpointVolume,
                                  IAudioMeterInformation, IAudioSessionControl2,
@@ -112,11 +134,8 @@ class WinAudio:
             hw = 0
         # Software volume (almost always): the loopback is already attenuated
         self.post_volume = not (hw & 1)
-        self.root = root                 # whole restore.json
-        devs = root["devices"]
-        if device_id not in devs:
-            devs[device_id] = root.pop("legacy", None) or new_device_state()
-        self.restore = devs[device_id]   # this device's state
+        self.store, self.dev_id = store, device_id
+        self.restore = store.take(device_id)   # this device's state (own copy)
         self.sessions = {}               # key -> Session
         self.written = {}                # key -> (last scalar we wrote, offset dB)
         self.dirty = False               # restore changed, save at next refresh
@@ -127,7 +146,7 @@ class WinAudio:
         self.rules = {}                  # lowercase app name -> balance it?
 
     def save(self):
-        save_json(STATE_FILE, self.root)
+        self.store.save(self.dev_id, self.restore)
 
     # --- which apps are balanced --------------------------------------------
     def is_excluded(self, name):
@@ -144,12 +163,13 @@ class WinAudio:
                 self._set_session(key, s)
 
     def apps(self):
-        """((name, excluded, is_call_app), ...) for the settings page."""
+        """((name, excluded, is_call_app, playing, exe path), ...) for the settings."""
         seen = {}
         for s in self.sessions.values():
-            if s.name not in seen:
+            old = seen.get(s.name)
+            if old is None or (s.playing and not old[3]):
                 seen[s.name] = (s.name, self.is_excluded(s.name),
-                                s.name.lower() in CALL_APPS)
+                                s.name.lower() in CALL_APPS, s.playing, s.path)
         return tuple(sorted(seen.values(), key=lambda a: a[0].lower()))
 
     # --- master -------------------------------------------------------------
@@ -169,18 +189,20 @@ class WinAudio:
         for i in range(en.GetCount()):
             try:
                 ctl = en.GetSession(i).QueryInterface(ctl2_i)
-                if ctl.GetState() == 2:          # expired
+                state = ctl.GetState()
+                if state == 2:                   # expired
                     continue
                 pid = ctl.GetProcessId()
                 if pid == self.my_pid:
                     continue
-                name = process_name(pid)
+                name, path = process_info(pid)
                 key = ctl.GetSessionInstanceIdentifier() or f"{name}:{pid}"
                 try:
                     meter = ctl.QueryInterface(meter_i)
                 except Exception:
                     meter = None
-                found[key] = Session(name, ctl.QueryInterface(sav_i), meter)
+                found[key] = Session(name, ctl.QueryInterface(sav_i), meter, path,
+                                     state == 1)
             except Exception:
                 continue
         return found
@@ -368,81 +390,78 @@ class WinAudio:
         self.save()
 
 
-class Engine(threading.Thread):
-    def __init__(self, enabled, preset, device=None, call_protect=True, app_rules=None):
-        super().__init__(daemon=True, name="AudioEngine")
+class RestoreStore:
+    """restore.json shared by the device threads. Each thread works on its own
+    copy of its device state and hands a snapshot here to be written."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        root = load_restore()
+        self.legacy = root.get("legacy")
+        self.snap = dict(root["devices"])
+
+    def take(self, dev_id):
+        with self.lock:
+            st = self.snap.get(dev_id)
+            if st is None:
+                st = self.legacy or new_device_state()
+                self.legacy = None
+                self.snap[dev_id] = st
+            return json.loads(json.dumps(st))
+
+    def peek(self, dev_id):
+        with self.lock:
+            return self.snap.get(dev_id)
+
+    def save(self, dev_id, state):
+        with self.lock:
+            self.snap[dev_id] = json.loads(json.dumps(state))
+            data = {"devices": self.snap}
+            if self.legacy:
+                data["legacy"] = self.legacy
+            save_json(STATE_FILE, data)
+
+
+class DeviceWorker(threading.Thread):
+    """Capture + balancing of ONE output device (its own thread and COM objects)."""
+
+    def __init__(self, engine, dev_id, name):
+        super().__init__(daemon=True, name=f"Device {name}")
+        self.engine, self.dev_id, self.device_name = engine, dev_id, name
         self.cmds = queue.Queue()
-        self.leveler = Leveler(preset)
-        self.want_enabled = enabled
-        self.want_device = device or None     # None = Windows default device
-        self.call_protect = bool(call_protect)
-        self.app_rules = dict(app_rules or {})
-        self.enabled = False
+        self.leveler = Leveler(engine.preset)
         self.alive = True
         self.finished = threading.Event()
-        # state read by the UI
+        self.enabled = False
         self.gain = 0.0
         self.state = "silence"
         self.history = deque([0.0] * 300, maxlen=300)   # 15 s at 20 Hz
-        self.device = ""             # name of the device being balanced
-        self.device_id = None
-        self.devices = ()            # ((id, name), ...) connected outputs
-        self.device_missing = False  # chosen device not connected: using default
-        self.default_name = ""       # Windows default output (for "Automatic")
-        self.apps = ()               # ((name, excluded, is_call_app), ...)
-        self.call_app = ""           # call app heard in the last seconds
+        self.last_sound = 0.0     # monotonic time of the last non-silent block
+        self.apps = ()
+        self.call_app = ""
         self.error = None
         self.headroom_short = False
-        # usage statistics (shown in the support card)
-        self.active_s = 0.0      # seconds of audio actually balanced
-        self.peaks = 0           # loud moments that were lowered
+        self.active_s = 0.0
+        self.peaks = 0
 
-    # thread-safe API
-    def set_enabled(self, on):
-        self.cmds.put(("enabled", bool(on)))
-
-    def set_preset(self, name):
-        self.cmds.put(("preset", name))
-
-    def set_device(self, dev_id):
-        self.cmds.put(("device", dev_id or None))
-
-    def set_app_rules(self, call_protect, rules):
-        self.cmds.put(("apps", (bool(call_protect), dict(rules))))
-
-    def shutdown(self, timeout=2.5):
+    def stop(self):
         self.alive = False
-        self.finished.wait(timeout)
-
-    def _pick_speaker(self):
-        speakers = sc.all_speakers()
-        self.devices = tuple((s.id, s.name) for s in speakers)
-        default = sc.default_speaker()
-        self.default_name = default.name
-        if self.want_device:
-            for s in speakers:
-                if s.id == self.want_device:
-                    self.device_missing = False
-                    return s
-            self.device_missing = True
-        else:
-            self.device_missing = False
-        return default
 
     def run(self):
         ctypes.windll.ole32.CoInitializeEx(None, 0)
-        root = load_restore()
         try:
             while self.alive:
-                self._run(root)      # returns only after an unexpected error
+                self._run()          # returns only after an unexpected error
                 if self.alive:
                     time.sleep(2.0)  # then start again instead of dying
         finally:
+            self.enabled = False
             self.finished.set()
 
-    def _run(self, root):
-        win = rec = rec_ctx = dev_id = None
-        last_scan = last_dev = 0.0
+    def _run(self):
+        eng = self.engine
+        win = rec = rec_ctx = None
+        last_scan = 0.0
         talk_until = call_until = 0.0
         call_name = ""
         tick = 0
@@ -451,25 +470,21 @@ class Engine(threading.Thread):
             while self.alive:
                 if rec is None:
                     try:
-                        spk = self._pick_speaker()
-                        dev_id = spk.id
-                        win = WinAudio(root, dev_id)
-                        win.set_rules(self.call_protect, self.app_rules)
+                        win = WinAudio(eng.store, self.dev_id)
+                        win.set_rules(eng.call_protect, eng.app_rules)
                         win.recover()
-                        mic = sc.get_microphone(id=dev_id, include_loopback=True)
+                        mic = sc.get_microphone(id=self.dev_id, include_loopback=True)
                         rec_ctx = mic.recorder(samplerate=SR, blocksize=BLOCK)
                         rec = rec_ctx.__enter__()
-                        self.device, self.device_id = spk.name, dev_id
                         self.apps = win.apps()
                         self.leveler.reset()
                         self.enabled = False
                         self.error = None
-                        last_dev = time.monotonic()
                     except Exception as exc:
                         self.error = str(exc)
                         if self.error != last_err:
                             last_err = self.error
-                            log(f"open device: {type(exc).__name__}: {exc}")
+                            log(f"open {self.device_name}: {type(exc).__name__}: {exc}")
                         self._close(win, rec_ctx)
                         win = rec = rec_ctx = None
                         time.sleep(1.0)
@@ -480,27 +495,21 @@ class Engine(threading.Thread):
                         cmd, val = self.cmds.get_nowait()
                     except queue.Empty:
                         break
-                    if cmd == "enabled":
-                        self.want_enabled = val
-                    elif cmd == "preset":
+                    if cmd == "preset":
                         self.leveler.set_preset(val)
-                    elif cmd == "device":
-                        self.want_device = val
-                        last_dev = 0.0           # re-check right now
                     elif cmd == "apps":
-                        self.call_protect, self.app_rules = val
                         win.set_rules(*val)
                         self.apps = win.apps()
                 try:
-                    if self.want_enabled and not self.enabled:
+                    if eng.want_enabled and not self.enabled:
                         win.activate()
                         self.enabled = True
-                    elif not self.want_enabled and self.enabled:
+                    elif not eng.want_enabled and self.enabled:
                         win.deactivate()
                         self.enabled = False
                 except Exception as exc:
                     # device unplugged in the middle, COM error...: start over
-                    log(f"on/off: {type(exc).__name__}: {exc}")
+                    log(f"on/off {self.device_name}: {type(exc).__name__}: {exc}")
                     self._close(win, rec_ctx)
                     rec = None
                     time.sleep(0.5)
@@ -511,6 +520,7 @@ class Engine(threading.Thread):
                 except Exception:
                     self._close(win, rec_ctx)
                     rec = None
+                    time.sleep(0.5)
                     continue
                 data = np.asarray(data, dtype=np.float64)
                 mono = data.mean(axis=1) if data.ndim > 1 else data
@@ -520,16 +530,6 @@ class Engine(threading.Thread):
                     last_scan = now
                     win.refresh()
                     self.apps = win.apps()
-                if now - last_dev > 2.0:
-                    last_dev = now
-                    try:
-                        if self._pick_speaker().id != dev_id:
-                            # headphones/speakers changed: restore and restart
-                            self._close(win, rec_ctx)
-                            rec = None
-                            continue
-                    except Exception:
-                        pass
 
                 # Someone in a call (or another excluded app) is talking:
                 # do not let that voice move the movie's volume.
@@ -561,17 +561,19 @@ class Engine(threading.Thread):
 
                 self.gain = gain if self.enabled else 0.0
                 new_state = self.leveler.state
-                if self.enabled and new_state != "silence":
-                    self.active_s += BLOCK_S
-                    if new_state == "loud" and self.state != "loud":
-                        self.peaks += 1
+                if new_state != "silence":
+                    self.last_sound = now
+                    if self.enabled:
+                        self.active_s += BLOCK_S
+                        if new_state == "loud" and self.state != "loud":
+                            self.peaks += 1
                 self.state = new_state
                 tick += 1
                 if tick % 5 == 0:
                     self.history.append(self.gain)
         except Exception as exc:
             self.error = f"{type(exc).__name__}: {exc}"
-            log(f"engine error: {self.error}")
+            log(f"{self.device_name}: {self.error}")
         finally:
             self._close(win, rec_ctx)
 
@@ -587,3 +589,262 @@ class Engine(threading.Thread):
                 rec_ctx.__exit__(None, None, None)
             except Exception:
                 pass
+
+
+FORM_FACTOR_KEY = "{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E} 0"
+
+
+class Engine(threading.Thread):
+    """Starts one DeviceWorker per output device to balance: the Windows default
+    device (devices=None) or the devices chosen in the settings."""
+
+    def __init__(self, enabled, preset, devices=None, call_protect=True, app_rules=None):
+        super().__init__(daemon=True, name="AudioEngine")
+        self.cmds = queue.Queue()
+        self.want_enabled = bool(enabled)
+        self.preset = preset
+        self.want_devices = list(devices) if devices is not None else None
+        self.call_protect = bool(call_protect)
+        self.app_rules = dict(app_rules or {})
+        self.alive = True
+        self.finished = threading.Event()
+        self.store = None
+        self.workers = {}            # device id -> DeviceWorker
+        # state read by the UI
+        self.devices = ()            # ((id, name, form factor), ...) connected outputs
+        self.default_id = None
+        self.default_name = ""
+        self.missing = ()            # chosen devices that are not connected
+        self.error = None
+        self._done_s = 0.0           # stats of workers already stopped
+        self._done_peaks = 0
+        self._idle = deque([0.0] * 300, maxlen=300)
+        self.other_apps = ()         # ((name, path, playing), ...) not on balanced devices
+        self._last_apps = 0.0
+
+    # ---- thread-safe API ----------------------------------------------------
+    def set_enabled(self, on):
+        self.want_enabled = bool(on)
+
+    def set_preset(self, name):
+        self.preset = name
+        for w in list(self.workers.values()):
+            w.cmds.put(("preset", name))
+
+    def set_devices(self, ids):
+        """ids: list of device ids, or None for the Windows default device."""
+        self.cmds.put(("devices", list(ids) if ids is not None else None))
+
+    def set_app_rules(self, call_protect, rules):
+        self.call_protect, self.app_rules = bool(call_protect), dict(rules)
+        for w in list(self.workers.values()):
+            w.cmds.put(("apps", (self.call_protect, dict(self.app_rules))))
+
+    def shutdown(self, timeout=2.5):
+        self.alive = False
+        self.finished.wait(timeout)
+
+    # ---- aggregated state for the UI ----------------------------------------
+    def _primary(self):
+        ws = [w for w in list(self.workers.values()) if w.error is None]
+        if not ws:
+            return None
+        return max(ws, key=lambda w: w.last_sound)
+
+    @property
+    def gain(self):
+        w = self._primary()
+        return w.gain if w else 0.0
+
+    @property
+    def state(self):
+        w = self._primary()
+        return w.state if w else "silence"
+
+    @property
+    def history(self):
+        w = self._primary()
+        return w.history if w else self._idle
+
+    @property
+    def enabled(self):
+        return any(w.enabled for w in list(self.workers.values()))
+
+    @property
+    def headroom_short(self):
+        return any(w.enabled and w.headroom_short for w in list(self.workers.values()))
+
+    @property
+    def call_app(self):
+        return next((w.call_app for w in list(self.workers.values()) if w.call_app), "")
+
+    @property
+    def device(self):
+        return " + ".join(w.device_name for w in list(self.workers.values()))
+
+    @property
+    def device_ids(self):
+        return tuple(self.workers)
+
+    @property
+    def apps(self):
+        out = {}
+        for w in list(self.workers.values()):
+            for a in w.apps:
+                old = out.get(a[0])
+                # (name, excluded, is_call, playing, path): playing on any device
+                out[a[0]] = a if old is None else old[:3] + (old[3] or a[3],) + old[4:]
+        return tuple(sorted(out.values(), key=lambda a: a[0].lower()))
+
+    @property
+    def device_missing(self):
+        return bool(self.missing)
+
+    @property
+    def worker_error(self):
+        ws = list(self.workers.values())
+        if self.error:
+            return self.error
+        if ws and all(w.error for w in ws):
+            return ws[0].error
+        return None
+
+    @property
+    def active_s(self):
+        return self._done_s + sum(w.active_s for w in list(self.workers.values()))
+
+    @property
+    def peaks(self):
+        return self._done_peaks + sum(w.peaks for w in list(self.workers.values()))
+
+    # ---- coordinator --------------------------------------------------------
+    def _scan_other_apps(self):
+        """Apps with sound on the other devices + known media apps that are
+        running: so the settings list is complete, not only what plays now."""
+        from pycaw.pycaw import AudioUtilities, IAudioSessionControl2
+        from comtypes import CLSCTX_ALL
+        from pycaw.pycaw import IAudioSessionManager2
+        out = {}
+        enum = AudioUtilities.GetDeviceEnumerator()
+        for dev_id, _n, _f in self.devices:
+            if dev_id in self.workers:
+                continue
+            try:
+                mgr = enum.GetDevice(dev_id).Activate(
+                    IAudioSessionManager2._iid_, CLSCTX_ALL, None
+                ).QueryInterface(IAudioSessionManager2)
+                en = mgr.GetSessionEnumerator()
+                for i in range(en.GetCount()):
+                    ctl = en.GetSession(i).QueryInterface(IAudioSessionControl2)
+                    state = ctl.GetState()
+                    pid = ctl.GetProcessId()
+                    if state == 2 or pid in (0, os.getpid()):
+                        continue
+                    name, path = process_info(pid)
+                    old = out.get(name)
+                    out[name] = (name, path, (state == 1) or (old is not None and old[2]))
+            except Exception:
+                continue
+        try:
+            import psutil
+            for p in psutil.process_iter(["name", "exe"]):
+                name = p.info.get("name") or ""
+                if name.lower() in MEDIA_APPS and name not in out:
+                    out[name] = (name, p.info.get("exe") or "", False)
+        except Exception:
+            pass
+        self.other_apps = tuple(out.values())
+
+    def _scan_devices(self):
+        from pycaw.constants import DEVICE_STATE, EDataFlow
+        from pycaw.pycaw import AudioUtilities
+        found = []
+        for d in AudioUtilities.GetAllDevices(EDataFlow.eRender.value,
+                                              DEVICE_STATE.ACTIVE.value):
+            try:
+                ff = int(d.properties.get(FORM_FACTOR_KEY) or 0)
+            except Exception:
+                ff = 0
+            found.append((d.id, d.FriendlyName or "?", ff))
+        default = AudioUtilities.GetSpeakers()
+        self.default_id = default.id if default is not None else None
+        self.default_name = next((n for i, n, _f in found if i == self.default_id), "")
+        self.devices = tuple(found)
+
+    def _targets(self):
+        connected = {i: n for i, n, _f in self.devices}
+        if self.want_devices is None:
+            self.missing = ()
+            ids = [self.default_id] if self.default_id in connected else []
+        else:
+            ids = [i for i in self.want_devices if i in connected]
+            self.missing = tuple(i for i in self.want_devices if i not in connected)
+            if not ids and self.default_id in connected:
+                ids = [self.default_id]   # nothing chosen is connected: use the default
+        return {i: connected[i] for i in ids}
+
+    def _stop_worker(self, dev_id):
+        w = self.workers.pop(dev_id)
+        w.stop()
+        w.finished.wait(3.0)
+        self._done_s += w.active_s
+        self._done_peaks += w.peaks
+
+    def _recover_idle(self, targets, recovered):
+        """Devices left raised by a crash but not balanced now: put them back."""
+        for dev_id, _name, _ff in self.devices:
+            if dev_id in targets or dev_id in recovered:
+                continue
+            st = self.store.peek(dev_id)
+            if st and (float(st.get("master_raised", 0.0)) > 0 or st.get("active")):
+                try:
+                    WinAudio(self.store, dev_id).recover()
+                except Exception as exc:
+                    log(f"recover idle device: {exc}")
+            recovered.add(dev_id)
+
+    def run(self):
+        ctypes.windll.ole32.CoInitializeEx(None, 0)
+        self.store = RestoreStore()
+        last = 0.0
+        recovered = set()
+        try:
+            while self.alive:
+                force = False
+                while True:
+                    try:
+                        cmd, val = self.cmds.get_nowait()
+                    except queue.Empty:
+                        break
+                    if cmd == "devices":
+                        self.want_devices = val
+                        force = True
+                now = time.monotonic()
+                if force or now - last > 2.0:
+                    last = now
+                    try:
+                        self._scan_devices()
+                        targets = self._targets()
+                        self.error = None if self.devices else "no output device"
+                        for dev_id in [d for d in self.workers if d not in targets]:
+                            self._stop_worker(dev_id)
+                        for dev_id, name in targets.items():
+                            if dev_id not in self.workers:
+                                w = DeviceWorker(self, dev_id, name)
+                                self.workers[dev_id] = w
+                                w.start()
+                        self._recover_idle(targets, recovered)
+                        if now - self._last_apps > 5.0:
+                            self._last_apps = now
+                            self._scan_other_apps()
+                    except Exception as exc:
+                        self.error = f"{type(exc).__name__}: {exc}"
+                        log(f"devices: {self.error}")
+                time.sleep(0.1)
+        finally:
+            for dev_id in list(self.workers):
+                w = self.workers[dev_id]
+                w.stop()
+            for w in list(self.workers.values()):
+                w.finished.wait(2.5)
+            self.finished.set()

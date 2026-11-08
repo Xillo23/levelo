@@ -64,7 +64,7 @@ zh.AutoStart=开机时自动启动（推荐）
 ja.AutoStart=Windows 起動時に自動的に開始する（推奨）
 
 [Tasks]
-Name: "autostart"; Description: "{cm:AutoStart}"
+Name: "autostart"; Description: "{cm:AutoStart}"; Check: IsFreshInstall
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
@@ -80,12 +80,13 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
-; autostart (the app can also toggle it from its panel)
+; autostart: chosen only on the first install. On updates the user's choice
+; (made later in the app) is kept as it is.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Levelo"; ValueData: """{app}\{#AppExe}"" --background"; Tasks: autostart; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Levelo"; Flags: deletevalue; Check: not WizardIsTaskSelected('autostart')
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Levelo"; Flags: deletevalue; Check: IsFreshInstall and not WizardIsTaskSelected('autostart')
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Levelo"; Flags: uninsdeletevalue
 ; language chosen in the wizard -> used by the app on first start
-Root: HKCU; Subkey: "Software\Levelo"; ValueType: string; ValueName: "Language"; ValueData: "{language}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Levelo"; ValueType: string; ValueName: "Language"; ValueData: "{language}"; Flags: uninsdeletekey; Check: IsFreshInstall
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
@@ -94,6 +95,14 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags
 Type: filesandordirs; Name: "{userappdata}\Levelo"
 
 [Code]
+{ True on a first install, False when updating an existing installation:
+  the settings in %APPDATA%\Levelo and the autostart choice are left alone. }
+function IsFreshInstall(): Boolean;
+begin
+  Result := not RegKeyExists(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{0E751030-8D6B-4B68-B9D3-D2E0DF59A9A0}_is1');
+end;
+
 { Ask a running Levelo to quit cleanly, so it restores every volume
   before files are replaced or removed. }
 procedure QuitRunningApp(const Exe: String);

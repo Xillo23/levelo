@@ -12,15 +12,17 @@ LOG_FILE = os.path.join(DATA_DIR, "levelo.log")
 
 
 def load_json(path, default):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict):
-            out = json.loads(json.dumps(default))
-            out.update(data)
-            return out
-    except Exception:
-        pass
+    """Read a settings file, falling back to its backup copy if it is damaged."""
+    for candidate in (path, path + ".bak"):
+        try:
+            with open(candidate, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                out = json.loads(json.dumps(default))
+                out.update(data)
+                return out
+        except Exception:
+            continue
     return json.loads(json.dumps(default))
 
 
@@ -30,6 +32,14 @@ def save_json(path, data):
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=1, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.exists(path):
+            # keep the previous good copy: used if the file is ever damaged
+            try:
+                os.replace(path, path + ".bak")
+            except OSError:
+                pass
         os.replace(tmp, path)
     except Exception:
         pass

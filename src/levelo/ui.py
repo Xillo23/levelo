@@ -2,7 +2,6 @@
 
 import ctypes
 import queue
-import re
 import threading
 import time
 import tkinter as tk
@@ -18,10 +17,11 @@ from . import REPO_URL as DEFAULT_WEBSITE
 from . import i18n, winsys
 from .dsp import DEFAULT_PRESET, PRESETS
 from .engine import CALL_APPS, Engine
+from .settings_ui import SettingsWindow, remember_apps, split_device_name
 from .i18n import t
 from .icons import app_icon, make_icon, png_b64
 from .online import OnlineChecker, is_newer
-from .storage import DATA_DIR, SETTINGS_FILE, load_json, save_json
+from .storage import SETTINGS_FILE, load_json, save_json
 
 PRESET_ORDER = ("light", "normal", "night")
 
@@ -43,15 +43,6 @@ def mix(c1, c2, k):
     return "#" + "".join(f"{int(x * k + y * (1 - k)):02x}" for x, y in zip(a, b))
 
 
-def split_device_name(name):
-    """'Speakers (2- Realtek Audio)' -> ('Speakers', 'Realtek Audio'), like the
-    two lines of the Windows sound settings."""
-    if name.endswith(")") and " (" in name:
-        i = name.index(" (")
-        return name[:i], re.sub(r"^\d+-\s*", "", name[i + 2:-1])
-    return name, ""
-
-
 def preset_label(key):
     return t(f"preset_{key}")
 
@@ -71,10 +62,12 @@ class App:
             "donor_until": 0.0,    # unix time: no asks until then
             "links": {},           # cached links.json from the repository
             "update_notified": "",
-            "device": None,        # output device id; None = Windows default
-            "device_name": "",     # its name, shown while it is disconnected
-            "call_protect": True,  # never touch voice-call apps
-            "app_rules": {}})      # app name (lowercase) -> balance it?
+            "device_mode": "auto",  # auto = Windows default device, manual = "devices"
+            "devices": [],          # output device ids chosen in the settings
+            "device_names": {},     # their names, shown while they are disconnected
+            "call_protect": True,   # never touch voice-call apps
+            "app_rules": {},        # app name (lowercase) -> balance it? (only exceptions)
+            "seen_apps": {}})       # apps seen recently, listed in the settings
         s = self.settings
         s["preset"] = OLD_PRESET_NAMES.get(s["preset"], s["preset"])
         if s.pop("donated", False) and not s["donor_until"]:
@@ -84,14 +77,16 @@ class App:
         lang = s.get("language") or winsys.installer_language() or i18n.system_language()
         i18n.set_language(lang)
 
-        if not isinstance(s.get("app_rules"), dict):
-            s["app_rules"] = {}
-        self.engine = Engine(s["enabled"], s["preset"], s["device"], s["call_protect"],
-                             s["app_rules"])
+        self._migrate_settings()
+        self.settings_win = None
+        self.engine = Engine(s["enabled"], s["preset"],
+                             s["devices"] if s["device_mode"] == "manual" else None,
+                             s["call_protect"], s["app_rules"])
         self.engine.start()
         self._flushed_s = 0.0
         self._flushed_peaks = 0
         self._last_flush = time.monotonic()
+        self._last_seen = 0.0
         self._thanks_until = 0.0
         self.update = None     # (version, url) when a newer release exists
 
@@ -121,6 +116,23 @@ class App:
             self.root.after(1500, self._welcome)
         if not background:
             self.root.after(400, self.show)
+
+    def _migrate_settings(self):
+        """Settings of older versions (or damaged values) -> current format."""
+        s = self.settings
+        for key, typ, default in (("app_rules", dict, {}), ("seen_apps", dict, {}),
+                                  ("device_names", dict, {}), ("devices", list, [])):
+            if not isinstance(s.get(key), typ):
+                s[key] = default
+        old = s.pop("device", None)                 # 0.9.1: a single chosen device
+        old_name = s.pop("device_name", "")
+        if old and isinstance(old, str):
+            s["device_mode"], s["devices"] = "manual", [old]
+            s["device_names"][old] = old_name or "?"
+        if s.get("device_mode") not in ("auto", "manual"):
+            s["device_mode"] = "auto"
+        s["call_protect"] = bool(s.get("call_protect", True))
+        self._save()
 
     def run(self):
         self.root.mainloop()
@@ -201,7 +213,7 @@ class App:
                         command=lambda: self.set_enabled(self.enabled_var.get())
                         ).pack(side="right")
         self._icon_button(head, ICON_SETTINGS, t("settings"),
-                          lambda: self.show_page("settings")).pack(side="right",
+                          lambda: self.open_settings("general")).pack(side="right",
                                                                    padx=(0, px(6)))
         self.head = head
 
@@ -242,7 +254,7 @@ class App:
         tk.Label(devrow, text=ICON_CHEVRON, font=(self.icon_font, 8), bg=pal["card"],
                  fg=pal["sub"], bd=0).pack(side="right")
         for w in (devrow, *devrow.winfo_children()):
-            w.bind("<Button-1>", lambda e: self.show_page("settings"))
+            w.bind("<Button-1>", lambda e: self.open_settings("devices"))
 
         self._label(main, t("intensity"), "body").pack(anchor="w", pady=(px(16), px(6)))
         seg = ttk.Frame(main, style="Panel.TFrame")
@@ -305,15 +317,10 @@ class App:
         self._label(bottom, f"v{__version__}" + (" beta" if BETA else ""), "sub"
                     ).pack(side="right", anchor="s")
 
-        self._build_settings(outer, wrap)
-        page, self.page = getattr(self, "page", "main"), "main"
-
         top.bind("<FocusOut>", self._on_focus_out)
-        top.bind("<Escape>", lambda e: self.show_page("main") if self.page != "main"
-                 else self.hide())
+        top.bind("<Escape>", lambda e: self.hide())
         if was_shown:
             self.show()
-            self.show_page(page)
 
     # --------------------------------------------------------------- settings
     def _icon_button(self, parent, glyph, tip, command, size=11):
@@ -327,163 +334,67 @@ class App:
         b.tip = tip
         return b
 
-    def _section(self, parent, title, first=False):
-        lbl = self._label(parent, title, "body")
-        lbl.config(font=(self.F["body"][0], self.F["body"][1], "bold"))
-        lbl.pack(anchor="w", pady=(0 if first else self.px(16), self.px(6)))
-
-    def _card(self, parent):
-        pal, px = self.pal, self.px
-        card = tk.Frame(parent, bg=pal["card"], highlightthickness=1,
-                        highlightbackground=pal["border"], bd=0)
-        card.pack(fill="x")
-        inner = ttk.Frame(card, style="ALCard.TFrame", padding=(px(12), px(8), px(12), px(8)))
-        inner.pack(fill="x")
-        return inner
-
-    def _build_settings(self, outer, wrap):
-        px, pal = self.px, self.pal
-        page = self.settings_page = ttk.Frame(outer, style="Panel.TFrame")
-        bar = ttk.Frame(page, style="Panel.TFrame")
-        bar.pack(fill="x", pady=(0, px(12)))
-        self._icon_button(bar, ICON_BACK, t("back"),
-                          lambda: self.show_page("main")).pack(side="left")
-        self._label(bar, t("settings"), "title").pack(side="left", padx=(px(6), 0))
-
-        # output device
-        self._section(page, t("set_device"), first=True)
-        self.dev_card = self._card(page)
-        self.dev_var = tk.StringVar(value=self.settings.get("device") or "")
-        self._label(page, t("device_hint"), "sub", wraplength=wrap, justify="left"
-                    ).pack(anchor="w", pady=(px(6), 0))
-
-        # voice calls
-        self._section(page, t("set_calls"))
-        cc = self._card(page)
-        self.calls_var = tk.BooleanVar(value=self.settings.get("call_protect", True))
-        ttk.Checkbutton(cc, text=t("calls_protect"), style="Card.Switch.TCheckbutton",
-                        variable=self.calls_var,
-                        command=lambda: self.set_call_protect(self.calls_var.get())
-                        ).pack(anchor="w")
-        tk.Label(cc, text=t("calls_desc"), bg=pal["card"], fg=pal["sub"],
-                 font=self.F["small"], wraplength=wrap - px(30), justify="left", bd=0
-                 ).pack(anchor="w", pady=(px(4), 0))
-
-        # apps
-        self._section(page, t("set_apps"))
-        self.apps_card = self._card(page)
-        self._label(page, t("apps_hint"), "sub", wraplength=wrap, justify="left"
-                    ).pack(anchor="w", pady=(px(6), 0))
-
-        ttk.Separator(page).pack(fill="x", pady=(px(14), px(10)))
-        links = ttk.Frame(page, style="Panel.TFrame")
-        links.pack(fill="x")
-        for text, fn in ((t("report_bug"), self.report_bug),
-                         (t("open_logs"), lambda: winsys.open_url(DATA_DIR))):
-            lk = tk.Label(links, text=text, bg=pal["bg"], fg=pal["accent"], cursor="hand2",
-                          font=(self.F["small"][0], self.F["small"][1], "underline"), bd=0)
-            lk.pack(side="left", padx=(0, px(14)))
-            lk.bind("<Button-1>", lambda e, fn=fn: fn())
-        self._dyn_sig = None
-
-    def show_page(self, page):
-        if not self.shown:
-            self.show()
-        if page == self.page:
-            return
-        self.page = page
-        if page == "settings":
-            self.head.pack_forget()
-            self.main.pack_forget()
-            self._dyn_sig = None
-            self._refresh_settings()
-            self.settings_page.pack(fill="x")
+    def open_settings(self, page="general"):
+        self.hide()
+        win = self.settings_win
+        if win is not None and win.alive():
+            if page != win.page:
+                win.show_page(page)
+            win.focus()
         else:
-            self.settings_page.pack_forget()
-            self.head.pack(fill="x")
-            self.main.pack(fill="x")
-            self.refresh()
-        self.top.focus_set()
-        self._resize()
+            self.settings_win = SettingsWindow(self, page)
 
     @staticmethod
     def _short(name, n=44):
         return name if len(name) <= n else name[:n - 1] + "…"
 
-    def _app_label(self, name):
+    def app_label(self, name):
         if name == "System":
             return t("app_system")
         base = name[:-4] if name.lower().endswith(".exe") else name
         return base[:1].upper() + base[1:]
 
-    def _refresh_settings(self):
-        """Rebuild the device and app lists when they change."""
-        eng, s, px, pal = self.engine, self.settings, self.px, self.pal
-        sig = (eng.devices, eng.default_name, eng.apps, s.get("device"), eng.device_missing)
-        if sig == self._dyn_sig:
-            return
-        self._dyn_sig = sig
-        for w in self.dev_card.winfo_children() + self.apps_card.winfo_children():
-            w.destroy()
-
-        self.dev_var.set(s.get("device") or "")
-        dname, _ = split_device_name(eng.default_name or "—")
-        choices = [("", t("device_auto", name=self._short(dname, 30)), "")]
-        choices += [(i, *split_device_name(n)) for i, n in eng.devices]
-        if s.get("device") and s["device"] not in dict(eng.devices):
-            off, _ = split_device_name(s.get("device_name") or "?")
-            choices.append((s["device"], t("device_off", name=self._short(off, 28)), ""))
-        for dev_id, label, adapter in choices:
-            ttk.Radiobutton(self.dev_card, text=self._short(label), value=dev_id,
-                            variable=self.dev_var, style="Card.TRadiobutton",
-                            command=lambda: self.set_device(self.dev_var.get())
-                            ).pack(anchor="w", pady=(px(2), 0))
-            if adapter:
-                tk.Label(self.dev_card, text=self._short(adapter, 48), bg=pal["card"],
-                         fg=pal["sub"], font=self.F["small"], bd=0
-                         ).pack(anchor="w", padx=(px(28), 0))
-
-        if not eng.apps:
-            tk.Label(self.apps_card, text=t("apps_empty"), bg=pal["card"], fg=pal["sub"],
-                     font=self.F["small"], bd=0).pack(anchor="w", pady=px(2))
-        for name, excluded, is_call in eng.apps:
-            row = ttk.Frame(self.apps_card, style="ALCard.TFrame")
-            row.pack(fill="x", pady=px(1))
-            var = tk.BooleanVar(value=not excluded)
-            ttk.Checkbutton(row, text=self._short(self._app_label(name), 30),
-                            style="Card.Switch.TCheckbutton", variable=var,
-                            command=lambda n=name, v=var: self.set_app_rule(n, v.get())
-                            ).pack(side="left")
-            if is_call:
-                tk.Label(row, text=t("app_call_tag"), bg=pal["card"], fg=pal["sub"],
-                         font=self.F["small"], bd=0).pack(side="right")
-        self.top.focus_set()
-        self._resize()
-
-    def set_device(self, dev_id):
+    def set_devices(self, mode, ids):
         s = self.settings
-        s["device"] = dev_id or None
-        s["device_name"] = dict(self.engine.devices).get(dev_id, "") if dev_id else ""
+        s["device_mode"] = "manual" if mode == "manual" else "auto"
+        s["devices"] = list(dict.fromkeys(ids))
+        names = dict(self.engine_device_names())
+        for i in s["devices"]:
+            if i in names:
+                s["device_names"][i] = names[i]
+        s["device_names"] = {i: n for i, n in s["device_names"].items() if i in s["devices"]}
         self._save()
-        self.engine.set_device(s["device"])
-        self._dyn_sig = None
+        self.engine.set_devices(s["devices"] if s["device_mode"] == "manual" else None)
+
+    def engine_device_names(self):
+        return [(i, n) for i, n, _f in self.engine.devices]
 
     def set_call_protect(self, on):
         s = self.settings
         s["call_protect"] = bool(on)
         # the switch wins over earlier per-app choices for call apps
-        call_names = {n.lower() for n, _e, c in self.engine.apps if c}
-        s["app_rules"] = {k: v for k, v in s["app_rules"].items()
-                          if k not in call_names and k not in CALL_APPS}
+        s["app_rules"] = {k: v for k, v in s["app_rules"].items() if k not in CALL_APPS}
         self._save()
         self.engine.set_app_rules(on, s["app_rules"])
-        self._dyn_sig = None
 
     def set_app_rule(self, name, balance):
         s = self.settings
-        s["app_rules"][name.lower()] = bool(balance)
+        low = name.lower()
+        default = not (s["call_protect"] and low in CALL_APPS)
+        if bool(balance) == default:
+            s["app_rules"].pop(low, None)      # back to the default: no rule needed
+        else:
+            s["app_rules"][low] = bool(balance)
         self._save()
         self.engine.set_app_rules(s["call_protect"], s["app_rules"])
+
+    def forget_idle_apps(self):
+        s = self.settings
+        present = {a[0].lower() for a in self.engine.apps}
+        present |= {o[0].lower() for o in self.engine.other_apps}
+        s["seen_apps"] = {k: v for k, v in s["seen_apps"].items()
+                          if k in present or k in s["app_rules"]}
+        self._save()
 
     def report_bug(self):
         site = self.website or ""
@@ -525,11 +436,6 @@ class App:
             self.top.withdraw()
             self.shown = False
             self.hidden_at = time.monotonic()
-            if self.page != "main":   # like Windows flyouts: reopen on the main page
-                self.settings_page.pack_forget()
-                self.head.pack(fill="x")
-                self.main.pack(fill="x")
-                self.page = "main"
 
     def toggle(self):
         if self.shown:
@@ -572,6 +478,8 @@ class App:
         self._save()
         self._build_panel()
         self._update_tray()
+        if self.settings_win is not None and self.settings_win.alive():
+            self.settings_win.build()
 
     # ---------------------------------------------------------------- support
     def _flush_stats(self):
@@ -666,6 +574,8 @@ class App:
     def quit(self):
         self._flush_stats()
         self.hide()
+        if self.settings_win is not None and self.settings_win.alive():
+            self.settings_win.close()
         try:
             self.tray.stop()
         except Exception:
@@ -703,7 +613,7 @@ class App:
               act(lambda: self.set_enabled(not s["enabled"])),
               checked=lambda it: s["enabled"]),
             I(lambda it: t("menu_intensity"), M(*[preset_item(k) for k in PRESET_ORDER])),
-            I(lambda it: t("settings"), act(lambda: self.show_page("settings"))),
+            I(lambda it: t("settings"), act(lambda: self.open_settings("general"))),
             I(lambda it: t("menu_language"),
               M(*[lang_item(c, n) for c, n in i18n.LANGUAGES.items()])),
             M.SEPARATOR,
@@ -781,6 +691,10 @@ class App:
                 self.ui_q.get_nowait()()
         except queue.Empty:
             pass
+        if time.monotonic() - self._last_seen > 3.0:
+            self._last_seen = time.monotonic()
+            if remember_apps(self.settings, self.engine.apps, self.engine.other_apps):
+                self._save()
         if time.monotonic() - self._last_flush > 30.0:
             self._last_flush = time.monotonic()
             self._flush_stats()
@@ -791,10 +705,7 @@ class App:
     def refresh(self):
         eng, s = self.engine, self.settings
         g = eng.gain
-        if self.page == "settings":
-            self._refresh_settings()
-            return
-        if eng.error:
+        if eng.worker_error:
             self.status_sub.config(text=t("status_error"))
             big, sub = t("error_big"), t("error_sub")
         elif not s["enabled"]:
@@ -816,10 +727,12 @@ class App:
         self.state_big.config(text=big)
         self.state_sub.config(text=sub)
         self.preset_desc.config(text=t(f"desc_{s['preset']}"))
-        self.dev_lbl.config(text=self._short(split_device_name(eng.device or "—")[0]))
+        devs = [split_device_name(n)[0] for n in eng.device.split(" + ") if n]
+        self.dev_lbl.config(text=self._short(" + ".join(devs) or "—"))
         warn = ""
         if eng.device_missing:
-            warn = t("warn_device", name=self._short(s.get("device_name") or "?", 30))
+            off = split_device_name(s["device_names"].get(eng.missing[0], "?"))[0]
+            warn = t("warn_device", name=self._short(off, 30))
         elif s["enabled"] and eng.headroom_short:
             warn = t("warn_headroom")
         if warn:
