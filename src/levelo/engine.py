@@ -465,6 +465,7 @@ class DeviceWorker(threading.Thread):
         talk_until = call_until = 0.0
         call_name = ""
         tick = 0
+        master = 0.0
         last_err = None
         try:
             while self.alive:
@@ -504,9 +505,11 @@ class DeviceWorker(threading.Thread):
                     if eng.want_enabled and not self.enabled:
                         win.activate()
                         self.enabled = True
+                        tick = 0            # master was just raised: read it again
                     elif not eng.want_enabled and self.enabled:
                         win.deactivate()
                         self.enabled = False
+                        tick = 0
                 except Exception as exc:
                     # device unplugged in the middle, COM error...: start over
                     log(f"on/off {self.device_name}: {type(exc).__name__}: {exc}")
@@ -542,10 +545,11 @@ class DeviceWorker(threading.Thread):
                 self.call_app = call_name if now < call_until else ""
 
                 # original signal = captured / (master volume * app volume)
-                try:
-                    master = win.master_db() if win.post_volume else 0.0
-                except Exception:
-                    master = 0.0
+                if tick % 10 == 0:
+                    try:
+                        master = win.master_db() if win.post_volume else 0.0
+                    except Exception:
+                        master = 0.0
                 comp_db = -(master + win.session_db)
                 orig = mono * db_to_lin(min(comp_db, 90.0))
 
@@ -621,6 +625,9 @@ class Engine(threading.Thread):
         self._idle = deque([0.0] * 300, maxlen=300)
         self.other_apps = ()         # ((name, path, playing), ...) not on balanced devices
         self._last_apps = 0.0
+        self.apps_wanted = 0.0       # set by the settings window: scan other apps now
+        self._dev_sig = None
+        self._last_full = 0.0
 
     # ---- thread-safe API ----------------------------------------------------
     def set_enabled(self, on):
@@ -762,6 +769,19 @@ class Engine(threading.Thread):
             pass
         self.other_apps = tuple(out.values())
 
+    def _device_signature(self):
+        """Ids of the active outputs + default id: a few cheap COM calls."""
+        from pycaw.constants import DEVICE_STATE, EDataFlow
+        from pycaw.pycaw import AudioUtilities
+        en = AudioUtilities.GetDeviceEnumerator()
+        col = en.EnumAudioEndpoints(EDataFlow.eRender.value, DEVICE_STATE.ACTIVE.value)
+        ids = tuple(sorted(col.Item(i).GetId() for i in range(col.GetCount())))
+        try:
+            default = en.GetDefaultAudioEndpoint(EDataFlow.eRender.value, 1).GetId()
+        except Exception:
+            default = None
+        return ids, default
+
     def _scan_devices(self):
         from pycaw.constants import DEVICE_STATE, EDataFlow
         from pycaw.pycaw import AudioUtilities
@@ -814,6 +834,7 @@ class Engine(threading.Thread):
         ctypes.windll.ole32.CoInitializeEx(None, 0)
         self.store = RestoreStore()
         last = 0.0
+        fails = 0
         recovered = set()
         try:
             while self.alive:
@@ -830,7 +851,10 @@ class Engine(threading.Thread):
                 if force or now - last > 2.0:
                     last = now
                     try:
-                        self._scan_devices()
+                        sig = self._device_signature()
+                        if force or sig != self._dev_sig or now - self._last_full > 30.0:
+                            self._dev_sig, self._last_full = sig, now
+                            self._scan_devices()
                         targets = self._targets()
                         self.error = None if self.devices else "no output device"
                         for dev_id in [d for d in self.workers if d not in targets]:
@@ -841,12 +865,23 @@ class Engine(threading.Thread):
                                 self.workers[dev_id] = w
                                 w.start()
                         self._recover_idle(targets, recovered)
-                        if now - self._last_apps > 5.0:
+                        if now - self._last_apps > 5.0 and now - self.apps_wanted < 10.0:
                             self._last_apps = now
                             self._scan_other_apps()
                     except Exception as exc:
-                        self.error = f"{type(exc).__name__}: {exc}"
-                        log(f"devices: {self.error}")
+                        # usually a device appearing/disappearing right now (HDMI
+                        # screen turned off, Bluetooth reconnecting): keep the last
+                        # good list, retry shortly, and only call it a problem if it
+                        # lasts
+                        msg = f"{type(exc).__name__}: {exc}"
+                        fails += 1
+                        self._dev_sig = None
+                        if fails == 1 or fails % 30 == 0:
+                            log(f"devices ({fails}x): {msg}")
+                        if fails >= 5:
+                            self.error = msg
+                    else:
+                        fails = 0
                 time.sleep(0.1)
         finally:
             workers = list(self.workers.values())

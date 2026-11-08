@@ -96,7 +96,7 @@ film. Le chiamate fatte dentro una scheda del browser invece non si possono sepa
 Solo per controllare gli aggiornamenti: due volte al giorno scarica due file pubblici da questo
 repository GitHub. Non invia nessun dato su di te o sul tuo PC.
 
-**Rallenta il PC?** No, usa circa l'1% di un core.
+**Rallenta il PC?** No, usa pochi punti percentuali di un solo core, molto meno dell'1% del processore.
 
 ## Sostieni il progetto
 

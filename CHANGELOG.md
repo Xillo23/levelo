@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.5 (beta)
+
+- **Much lighter**: CPU use down from ~12% to ~3–4% of one core (well under 1% of the
+  whole processor). The audio capture no
+  longer polls Windows hundreds of times a second, devices are re-read only when
+  something changes, and the running-apps scan happens only while Settings is open.
+- **Settings window is now instant**: pages are built once and kept, so switching page
+  takes a few milliseconds and keeps the scroll position; scrolling is smooth; the app
+  list is added in small steps and its names are prepared in the background; closing
+  and reopening the window is immediate.
+- A device appearing or disappearing (HDMI screen turned off, Bluetooth reconnecting)
+  no longer shows "Audio problem": Levelo keeps working and retries.
+
 ## 0.9.4 (beta)
 
 - The "Windows volume was almost at maximum" note no longer stays in the panel: it is

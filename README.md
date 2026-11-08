@@ -127,7 +127,7 @@ Only to check for updates: twice a day it downloads two public files from this G
 repository (the latest release info and `links.json`). Nothing about you or your PC is sent.
 
 **Does it slow down my PC?**
-No. It uses about 1% of one CPU core.
+No. It uses a few percent of a single CPU core, well under 1% of the whole processor.
 
 ## Build from source
 

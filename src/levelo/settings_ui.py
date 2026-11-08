@@ -64,16 +64,23 @@ def short(text, n):
     return text if len(text) <= n else text[:n - 1] + "…"
 
 
+def _page_of(widget):
+    """The page frame a widget belongs to (it holds that page's cards)."""
+    while widget is not None and not hasattr(widget, "cards"):
+        widget = widget.master
+    return widget
+
+
 class Card:
     """A settings card: [icon] title / description ............ [control]."""
 
     def __init__(self, ui, parent, glyph, title, desc="", image=None):
         app, px, pal = ui.app, ui.app.px, ui.app.pal
         self.ui = ui
-        self.outer = tk.Frame(parent, bg=pal["border"])
-        self.outer.pack(fill="x", padx=px(12), pady=(0, px(4)))
-        c = self.frame = tk.Frame(self.outer, bg=pal["card"])
-        c.pack(fill="x", padx=1, pady=1)
+        c = self.frame = self.outer = tk.Frame(
+            parent, bg=pal["card"], highlightthickness=1, highlightbackground=pal["border"],
+            highlightcolor=pal["border"], bd=0)
+        c.pack(fill="x", padx=px(12), pady=(0, px(4)))
         c.columnconfigure(0, minsize=px(26))
         c.columnconfigure(1, weight=1)
         if image is not None:
@@ -94,7 +101,7 @@ class Card:
             self.title.grid(row=0, column=1, rowspan=2, sticky="ew", pady=px(14))
         self.right = tk.Frame(c, bg=pal["card"])
         self.right.grid(row=0, column=2, rowspan=2, padx=(px(12), px(16)))
-        ui.cards.append(self)
+        _page_of(parent).cards.append(self)
 
     def set_desc(self, text):
         if self.desc.cget("text") != text:
@@ -104,6 +111,7 @@ class Card:
         self.icon.config(image=image, text="")
 
     def wrap(self, body_w):
+        body_w -= 2      # the border
         px = self.ui.app.px
         avail = (body_w - px(24) - 2 - self.icon.winfo_reqwidth() - px(30)
                  - self.right.winfo_reqwidth() - px(28))
@@ -131,8 +139,10 @@ class SettingsWindow:
     def build(self):
         app, px, pal = self.app, self.app.px, self.app.pal
         geo = None
+        hidden = False
         if self.win is not None:
             geo = self.win.geometry()
+            hidden = self.win.state() == "withdrawn"
             self.win.destroy()
         win = self.win = tk.Toplevel(app.root, bg=pal["bg"])
         win.withdraw()
@@ -170,10 +180,9 @@ class SettingsWindow:
         # overlay scrollbar: shown only when needed and it never changes the layout
         self.sb = ttk.Scrollbar(holder, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=self._yset)
-        self.body = tk.Frame(self.canvas, bg=pal["bg"])
-        self._body_id = self.canvas.create_window(0, 0, window=self.body, anchor="nw")
-        self.body.bind("<Configure>", lambda e: self.canvas.configure(
-            scrollregion=(0, 0, e.width, e.height)))
+        self.root_body = self.canvas     # pages live directly on the canvas
+        self.pages = {}          # key -> page frame (with .cards .paras .update .item)
+        self.body = None
         self.canvas.bind("<Configure>", self._on_resize)
         win.bind("<MouseWheel>", self._wheel)
         self._relayout_job = None
@@ -181,9 +190,10 @@ class SettingsWindow:
         self.show_page(self.page)
         win.update_idletasks()
         self._relayout()
-        win.deiconify()
-        self._style_titlebar()
-        self.focus()
+        if not hidden:        # rebuilt (language/theme) while closed: stay closed
+            win.deiconify()
+            self._style_titlebar()
+            self.focus()
         self.win.after(1000, self._tick)
 
     def _yset(self, lo, hi):
@@ -194,7 +204,8 @@ class SettingsWindow:
             self.sb.place(relx=1.0, x=-self.app.px(2), rely=0, relheight=1.0, anchor="ne")
 
     def _on_resize(self, e):
-        self.canvas.itemconfigure(self._body_id, width=e.width)
+        for page in self.pages.values():
+            self.canvas.itemconfigure(page.item, width=e.width)
         if self._relayout_job:
             self.win.after_cancel(self._relayout_job)
         self._relayout_job = self.win.after(40, self._relayout)
@@ -207,10 +218,14 @@ class SettingsWindow:
         w = self.canvas.winfo_width()
         if w < 50:
             return
-        for card in self.cards:
+        page = self.body
+        if page is None:
+            return
+        page.width = w
+        for card in page.cards:
             if card.frame.winfo_exists():
                 card.wrap(w)
-        for lbl in self.paras:
+        for lbl in page.paras:
             if lbl.winfo_exists():
                 lbl.config(wraplength=max(100, w - self.app.px(28)))
 
@@ -221,21 +236,34 @@ class SettingsWindow:
         except Exception:
             pass
 
+    def _fit(self, page):
+        self.canvas.configure(scrollregion=(0, 0, self.canvas.winfo_width(),
+                                            page.winfo_reqheight()))
+
     def _wheel(self, e):
-        if self.body.winfo_reqheight() > self.canvas.winfo_height():
+        if self.body is not None and self.body.winfo_reqheight() > self.canvas.winfo_height():
             self.canvas.yview_scroll(int(-e.delta / 120) * 3, "units")
 
     def focus(self):
         if self.win.state() in ("withdrawn", "iconic"):
             self.win.deiconify()
+            self._style_titlebar()
         self.win.lift()
         self.win.focus_force()
 
     def close(self):
+        """Hide (reopening is then instant); destroy() is for language/theme changes."""
+        if self.alive():
+            self.win.withdraw()
+
+    def destroy(self):
         if self.win is not None:
             self.win.destroy()
             self.win = None
         self.app.settings_win = None
+
+    def visible(self):
+        return self.alive() and self.win.state() == "normal"
 
     def alive(self):
         return self.win is not None and self.win.winfo_exists()
@@ -267,32 +295,63 @@ class SettingsWindow:
         row.paint = paint
         return row
 
-    def show_page(self, key):
+    def show_page(self, key, rebuild=False):
+        """Pages are built the first time and then kept: switching is instant."""
         if key not in PAGES:
             key = "general"
+        old = self.body
+        if old is not None:
+            old.scroll_y = self.canvas.yview()[0]
+            self.canvas.itemconfigure(old.item, state="hidden")
+        if rebuild and key in self.pages:
+            gone = self.pages.pop(key)
+            self.canvas.delete(gone.item)
+            gone.destroy()
         self.page = key
         for item in self.nav_items.values():
             item.paint()
         self.title.config(text=t(f"nav_{key}"))
-        for w in self.body.winfo_children():
-            w.destroy()
-        self.cards, self.paras, self._photos = [], [], []
-        self._update = None              # page function that refreshes values
-        getattr(self, f"_page_{key}")()
-        self.canvas.yview_moveto(0)
-        if self.win.winfo_ismapped():
+        page = self.pages.get(key)
+        fresh = page is None
+        if fresh:
+            page = tk.Frame(self.canvas, bg=self.app.pal["bg"])
+            page.cards, page.paras, page.update, page.width, page.scroll_y = [], [], None, 0, 0.0
+            page.item = self.canvas.create_window(0, 0, window=page, anchor="nw",
+                                                  width=max(1, self.canvas.winfo_width()))
+            page.bind("<Configure>", lambda e, pg=page: self.body is pg and self._fit(pg))
+            self.pages[key] = page
+        self.canvas.itemconfigure(page.item, state="normal")
+        self.body = page
+        if fresh:
+            self._update = None          # page function that refreshes values
+            getattr(self, f"_page_{key}")()
+            page.update = self._update
+        else:
+            self._update = page.update
+            if self._update:
+                self._update()           # values may have changed meanwhile
+        if fresh or page.width != self.canvas.winfo_width():
             self.win.update_idletasks()
-            self._relayout()
+            if self.win.winfo_ismapped():
+                self._relayout()
+        self._fit(page)
+        self.canvas.yview_moveto(0 if fresh else page.scroll_y)
 
     def _tick(self):
         if not self.alive():
             return
-        try:
-            if self._update:
-                self._update()
-        except tk.TclError:
-            pass
+        if self.visible():            # hidden window: no work at all
+            self.app.engine.apps_wanted = time.monotonic()   # keep the app list fresh
+            try:
+                if self._update:
+                    self._update()
+            except tk.TclError:
+                pass
         self.win.after(1000, self._tick)
+
+    def _prune(self):
+        page = self.body
+        page.cards[:] = [c for c in page.cards if c.frame.winfo_exists()]
 
     def _keep_scroll(self, rebuild):
         y = self.canvas.yview()[0]
@@ -309,7 +368,7 @@ class SettingsWindow:
         lbl = tk.Label(parent or self.body, text=text, bg=pal["bg"], fg=fg, font=font, bd=0,
                        justify="left", anchor="w", wraplength=px(480))
         lbl.pack(fill="x", padx=px(14), pady=pady)
-        self.paras.append(lbl)
+        _page_of(lbl).paras.append(lbl)
         return lbl
 
     def heading(self, text, parent=None):
@@ -402,7 +461,7 @@ class SettingsWindow:
         def set_mode():
             if mode.get() != s["device_mode"]:
                 app.set_devices(mode.get(), s["devices"])
-                self._keep_scroll(lambda: self.show_page("devices"))
+                self.show_page("devices", rebuild=True)
         auto = self.card(G["auto"], t("dev_auto_title"), " ")
         manual_card = self.card(G["pick"], t("dev_manual_title"), t("dev_manual_desc"))
         for c, value in ((auto, "auto"), (manual_card, "manual")):
@@ -435,7 +494,7 @@ class SettingsWindow:
         def build_rows():
             for w in box.winfo_children():
                 w.destroy()
-            self.cards = [c for c in self.cards if c.frame.winfo_exists()]
+            self._prune()
             rows.clear()
             manual = s["device_mode"] == "manual"
             for dev_id, name, ff, online in listed():
@@ -490,6 +549,9 @@ class SettingsWindow:
 
     # ---------------------------------------------------------------- apps
     def _history_apps(self):
+        from .appinfo import AUDIO_CACHE
+        if "apps" in AUDIO_CACHE and self._history[0] == 0.0:
+            self._history = AUDIO_CACHE["apps"]
         stamp, apps = self._history
         if time.monotonic() - stamp > HISTORY_TTL:
             apps = audio_history()
@@ -563,7 +625,7 @@ class SettingsWindow:
         box.pack(fill="x")
         empty = self.para("", pady=(px(8), 0))
         rows = {}           # low -> (card, switch)
-        state = {"keys": None, "job": None, "icons": []}
+        state = {"keys": None, "job": None, "icons": [], "gen": 0, "building": False}
 
         def visible():
             q = search.get().strip().lower()
@@ -577,28 +639,53 @@ class SettingsWindow:
             out.sort(key=lambda r: (r["exe"] != "System", r["title"].casefold(), r["low"]))
             return out
 
+        page = self.body
+        box.photos = []
+
         def build(items):
+            state["gen"] += 1
+            gen = state["gen"]
             for w in box.winfo_children():
                 w.destroy()
-            self.cards = [c for c in self.cards if c.frame.winfo_exists()]
-            self._photos = []
+            self._prune()
+            box.photos = []
             rows.clear()
-            pending = []
-            groups = (("apps_now", [r for r in items if r["present"]]),
-                      ("apps_other", [r for r in items if not r["present"]]))
-            first = True
-            for label, group in groups:
-                if not group:
-                    continue
-                h = self.heading(t(label), parent=box)
-                if first:
-                    h.pack_configure(pady=(px(4), px(8)))
-                first = False
-                for r in group:
-                    pending += add_row(r)
+            todo = []
+            for label, group in (("apps_now", [r for r in items if r["present"]]),
+                                 ("apps_other", [r for r in items if not r["present"]])):
+                if group:
+                    todo.append(("head", label))
+                    todo += [("row", r) for r in group]
             empty.config(text="" if items else t("apps_empty"))
-            state["icons"] = pending
-            load_icons()
+            state["icons"] = []
+            state["building"] = True
+
+            def step():
+                if gen != state["gen"] or not box.winfo_exists():
+                    return
+                new = []
+                count = 0
+                while todo and count < 12:
+                    kind, x = todo.pop(0)
+                    if kind == "head":
+                        h = self.heading(t(x), parent=box)
+                        if not box.winfo_children()[:-1]:
+                            h.pack_configure(pady=(px(4), px(8)))
+                    else:
+                        c, icon = add_row(x)
+                        new.append(c)
+                        state["icons"] += icon
+                        count += 1
+                box.update_idletasks()
+                w = self.canvas.winfo_width()
+                for c in new:
+                    c.wrap(w)
+                if todo:
+                    self.win.after(1, step)
+                else:
+                    state["building"] = False
+                    load_icons()
+            step()
 
         def add_row(r):
             desc, on = self._status(r)
@@ -606,7 +693,7 @@ class SettingsWindow:
             c = self.card(glyph, short(r["title"], 60), desc, parent=box)
             sw = self.switch(c, on, lambda v, n=r["exe"]: app.set_app_rule(n, v))
             rows[r["low"]] = (c, sw)
-            return [(c, r["path"])] if r["path"] else []
+            return c, ([(c, r["path"])] if r["path"] else [])
 
         def load_icons():
             """Real app icons, a few at a time so the window never freezes."""
@@ -617,12 +704,14 @@ class SettingsWindow:
                 pil = exe_icon(path, px(24))
                 if pil is not None:
                     img = tk.PhotoImage(data=png_b64(pil))
-                    self._photos.append(img)
+                    box.photos.append(img)
                     c.set_image(img)
             if state["icons"]:
                 self.win.after(15, load_icons)
 
         def update():
+            if state["building"] or self.body is not page:
+                return
             items = visible()
             keys = [(r["low"], r["present"]) for r in items]
             if keys != state["keys"]:
@@ -696,7 +785,7 @@ class SettingsWindow:
             state["update"] = app.update
             for w in box.winfo_children():
                 w.destroy()
-            self.cards = [c for c in self.cards if c.frame.winfo_exists()]
+            self._prune()
             if app.update:
                 c = self.card(G["update"], t("about_update", v=app.update[0]),
                               t("about_update_desc"), parent=box)
@@ -720,6 +809,18 @@ class SettingsWindow:
         if app.donate_url:
             self.link_card(G["heart"], t("menu_donate"), t("about_donate_desc"),
                            lambda: winsys.open_url(app.donate_url))
+
+
+def prewarm_apps():
+    """Fill the name/icon caches (pure Win32 calls, safe in a thread)."""
+    try:
+        from .appinfo import AUDIO_CACHE
+        apps = audio_history()
+        AUDIO_CACHE["apps"] = (time.monotonic(), apps)
+        for name, path in apps:
+            app_title(name, path, FRIENDLY)
+    except Exception:
+        pass
 
 
 def remember_apps(settings, apps, other=()):

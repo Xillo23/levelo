@@ -35,6 +35,7 @@ _gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
 _gdi32.DeleteDC.argtypes = [wintypes.HDC]
 
 _desc_cache = {}
+AUDIO_CACHE = {}       # "apps": (monotonic time, audio_history()) prepared in background
 _icon_cache = {}
 
 

@@ -17,7 +17,8 @@ from . import REPO_URL as DEFAULT_WEBSITE
 from . import i18n, winsys
 from .dsp import DEFAULT_PRESET, PRESETS
 from .engine import CALL_APPS, Engine
-from .settings_ui import SettingsWindow, remember_apps, split_device_name
+from .settings_ui import (SettingsWindow, prewarm_apps, remember_apps,
+                          split_device_name)
 from .i18n import t
 from .icons import app_icon, make_icon, png_b64
 from .online import OnlineChecker, is_newer
@@ -112,6 +113,10 @@ class App:
         self.root.protocol("WM_SAVE_YOURSELF", lambda: self.engine.shutdown(2.0))
         self.root.after(50, self._loop)
 
+        # read app names/icons of the audio history in the background, so the
+        # Apps page opens instantly later
+        self.root.after(8000, lambda: threading.Thread(
+            target=prewarm_apps, daemon=True, name="Prewarm").start())
         if not s.get("welcomed"):
             s["welcomed"] = True
             self._save()
@@ -346,6 +351,8 @@ class App:
             if page != win.page:
                 win.show_page(page)
             win.focus()
+            if win._update:
+                win._update()
         else:
             self.settings_win = SettingsWindow(self, page)
 
@@ -581,7 +588,7 @@ class App:
         self._flush_stats()
         self.hide()
         if self.settings_win is not None and self.settings_win.alive():
-            self.settings_win.close()
+            self.settings_win.destroy()
         try:
             self.tray.stop()
         except Exception:
