@@ -115,6 +115,19 @@ def build_setup():
     ])
 
 
+def write_checksums():
+    """SHA256 of every download, published with the release so users (and
+    antivirus reports) can check the files are the original ones."""
+    import hashlib
+    lines = []
+    for f in sorted(os.listdir(DIST)):
+        if f.startswith(f"Levelo-{__version__}") and f.endswith((".exe", ".zip")):
+            with open(os.path.join(DIST, f), "rb") as fh:
+                lines.append(f"{hashlib.sha256(fh.read()).hexdigest()}  {f}")
+    with open(os.path.join(DIST, f"Levelo-{__version__}-SHA256.txt"), "w", newline="\n") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
 def main():
     os.makedirs(BUILD, exist_ok=True)
     os.makedirs(DIST, exist_ok=True)
@@ -125,6 +138,7 @@ def main():
     shutil.make_archive(base, "zip", os.path.join(BUILD, "app"), "Levelo")
     if "--no-setup" not in sys.argv:
         build_setup()
+    write_checksums()
     print("\nDone ->", DIST)
     for f in sorted(os.listdir(DIST)):
         print("  ", f, f"{os.path.getsize(os.path.join(DIST, f)) / 1e6:.1f} MB")

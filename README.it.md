@@ -29,8 +29,15 @@ tiene tutto a un livello comodo, in tempo reale.
 - 🗣️ **Alza dolcemente le parti deboli**: sussurri e dialoghi bassi diventano comprensibili.
 - 🎚️ **Usi il volume di Windows come sempre**: tasti, barra delle applicazioni, casse. Non c'è uno slider in più.
 - 🌙 **Tre intensità**: *Leggero*, *Normale* e *Notte* (tutto quasi allo stesso livello).
+- 🎧 **Le chiamate restano com'erano**: guardi un film con gli amici su Discord, Teams, Zoom o WhatsApp? Le loro voci tengono il loro volume e non fanno abbassare il film.
+- 🔊 **Uno o più dispositivi**: segue l'uscita predefinita, oppure bilancia casse e cuffie insieme.
+- 🧩 **Scegli le app**: tutte le app che usano l'audio sono in elenco, con un interruttore per lasciarle stare.
 - 🪶 **Leggero e privato**: niente account, nessun tracciamento, niente driver. L'audio non esce dal PC.
 - 🌍 **11 lingue**.
+
+<div align="center">
+<img src="docs/settings.it.png" width="720" alt="Impostazioni di Levelo">
+</div>
 
 ## Installazione
 
@@ -46,9 +53,10 @@ Non devi fare niente. Il click sull'icona apre il pannello, dove trovi:
 - l'**interruttore** per attivare o mettere in pausa;
 - un **grafico** di cosa sta facendo (▲ alza, ▼ abbassa);
 - l'**intensità**;
-- l'opzione **Avvia con Windows**.
+- l'opzione **Avvia con Windows**;
+- l'**ingranaggio ⚙** che apre le **Impostazioni**: dispositivi, app, chiamate, lingua.
 
-Il click destro apre il menu: intensità, lingua, avvio automatico, esci.
+Il click destro apre il menu: intensità, impostazioni, lingua, avvio automatico, esci.
 
 > **Consiglio:** per alzare le voci basse serve un po' di margine. Se il volume di Windows
 > è al 100%, abbassalo un po' e alza le casse, la TV o il monitor. Il pannello te lo segnala.
@@ -73,7 +81,16 @@ Il click destro apre il menu: intensità, lingua, avvio automatico, esci.
 Succede con le app nuove senza un certificato di firma a pagamento. Clicca *Ulteriori
 informazioni* → *Esegui comunque*. Il codice sorgente completo è in questo repository.
 
-**Funziona con cuffie, Bluetooth e HDMI?** Sì, segue sempre il dispositivo predefinito.
+**Funziona con cuffie, Bluetooth e HDMI?** Sì. Di base segue il dispositivo predefinito di
+Windows e cambia insieme a lui. In Impostazioni → *Dispositivi* puoi sceglierne uno o più da
+bilanciare insieme (per esempio casse e cuffie).
+
+**Posso escludere un'app?** Sì: Impostazioni → *App*, spegni il suo interruttore (oppure usa
+*Aggiungi un'app…* se non è ancora in elenco). Le app di chiamata sono escluse in automatico.
+
+**Sono in chiamata su Discord: abbassa anche il mio amico?** No. Discord, Teams, Zoom,
+WhatsApp, Telegram e simili restano al loro volume, e la voce di chi parla non fa abbassare il
+film. Le chiamate fatte dentro una scheda del browser invece non si possono separare.
 
 **Si collega a internet?**
 Solo per controllare gli aggiornamenti: due volte al giorno scarica due file pubblici da questo

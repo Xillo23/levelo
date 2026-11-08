@@ -32,7 +32,7 @@ CALL_APPS = {
     "ts3client_win64.exe", "ts3client_win32.exe", "teamspeak.exe", "mumble.exe",
     "webex.exe", "ciscocollabhost.exe", "element.exe", "guilded.exe",
     "phoneexperiencehost.exe", "ringcentral.exe", "gotomeeting.exe",
-    "ayugram.exe", "kotatogram.exe", "64gram.exe", "unigram.exe", "beeper.exe",
+    "ayugram.exe", "kotatogram.exe", "xboxpartychathost.exe", "64gram.exe", "unigram.exe", "beeper.exe",
 }
 # An excluded app "speaks" when its peak is above -50 dBFS and not far below
 # the balanced apps: then the measurement is frozen (see Leveler.process).

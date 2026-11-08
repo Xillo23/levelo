@@ -31,11 +31,18 @@ notification area and keeps everything at a comfortable level in real time:
 - 🗣️ **Quiet parts are raised smoothly**: whispers and soft dialogue become intelligible.
 - 🎚️ **You keep using the normal Windows volume** (keys, taskbar, speakers). There's no extra slider.
 - 🌙 **Three intensities**: *Light*, *Normal* and *Night* (everything at almost the same level, great for late-night watching).
+- 🎧 **Voice calls are left alone**: watching with friends on Discord, Teams, Zoom or WhatsApp? Their voices keep their volume and don't make the movie quieter.
+- 🔊 **One or more devices**: follows your default output, or balances speakers and headphones at the same time.
+- 🧩 **Choose the apps**: every app that plays sound is listed, with a switch to leave it alone.
 - 🪶 **Lightweight and private**: no account, no tracking, no drivers to install. Audio never leaves your PC.
 - 🌍 **11 languages**: English, Italiano, Español, Deutsch, Français, Português, Русский, Polski, Türkçe, 简体中文, 日本語.
 
 Works with any app that plays sound: browsers (Netflix, YouTube, Prime Video…), VLC,
 MPC-HC, Plex, games, and more.
+
+<div align="center">
+<img src="docs/settings.png" width="720" alt="Levelo settings">
+</div>
 
 ## Download and install
 
@@ -109,6 +116,11 @@ it. In Settings → *Devices* you can choose one or more devices to balance at t
 **Can I exclude an app?**
 Yes: Settings → *Apps*, turn its switch off (or use *Add an app…* if it isn't listed yet).
 Voice-call apps are excluded automatically.
+
+**I'm in a Discord call: does it lower my friend too?**
+No. Discord, Teams, Zoom, WhatsApp, Telegram and similar apps keep their volume, and the voice
+of whoever is talking doesn't make the movie quieter. Calls made inside a browser tab can't be
+separated from the rest of the browser, though.
 
 **Does it connect to the internet?**
 Only to check for updates: twice a day it downloads two public files from this GitHub

@@ -660,7 +660,8 @@ _SETTINGS = {
         "apps_desc": "Levelo balances every app that plays sound. Turn off the ones it should "
                      "leave alone: their volume will never be touched.",
         "apps_search": "Search apps",
-        "apps_forget": "Remove inactive apps from the list",
+        "apps_now": "In use now",
+        "apps_other": "Other apps",
         "apps_empty": "No apps yet: they appear here as soon as they play sound.",
         "app_system": "System sounds",
         "app_playing": "Playing",
@@ -719,7 +720,8 @@ _SETTINGS = {
         "apps_desc": "Levelo bilancia tutte le app che riproducono audio. Spegni quelle da "
                      "lasciare stare: il loro volume non verrà mai toccato.",
         "apps_search": "Cerca un'app",
-        "apps_forget": "Togli dall'elenco le app non attive",
+        "apps_now": "In uso ora",
+        "apps_other": "Altre app",
         "apps_empty": "Ancora nessuna app: compaiono qui appena riproducono audio.",
         "app_system": "Suoni di sistema",
         "app_playing": "In riproduzione",
@@ -780,7 +782,8 @@ _SETTINGS = {
         "apps_desc": "Levelo equilibra todas las aplicaciones que reproducen sonido. Desactiva "
                      "las que debe dejar en paz: su volumen nunca se tocará.",
         "apps_search": "Buscar una aplicación",
-        "apps_forget": "Quitar de la lista las aplicaciones inactivas",
+        "apps_now": "En uso ahora",
+        "apps_other": "Otras aplicaciones",
         "apps_empty": "Aún no hay aplicaciones: aparecen aquí en cuanto reproducen sonido.",
         "app_system": "Sonidos del sistema",
         "app_playing": "Reproduciendo",
@@ -842,7 +845,8 @@ _SETTINGS = {
         "apps_desc": "Levelo gleicht jede App aus, die Ton abspielt. Schalte die aus, die es in "
                      "Ruhe lassen soll: ihre Lautstärke wird nie verändert.",
         "apps_search": "App suchen",
-        "apps_forget": "Inaktive Apps aus der Liste entfernen",
+        "apps_now": "Gerade in Verwendung",
+        "apps_other": "Andere Apps",
         "apps_empty": "Noch keine Apps: sie erscheinen hier, sobald sie Ton abspielen.",
         "app_system": "Systemsounds",
         "app_playing": "Spielt ab",
@@ -905,7 +909,8 @@ _SETTINGS = {
         "apps_desc": "Levelo équilibre toutes les applis qui jouent du son. Désactivez celles "
                      "qu'il doit laisser tranquilles : leur volume ne sera jamais modifié.",
         "apps_search": "Rechercher une appli",
-        "apps_forget": "Retirer les applis inactives de la liste",
+        "apps_now": "Utilisées maintenant",
+        "apps_other": "Autres applis",
         "apps_empty": "Pas encore d'applis : elles apparaissent ici dès qu'elles jouent du son.",
         "app_system": "Sons système",
         "app_playing": "En lecture",
@@ -967,7 +972,8 @@ _SETTINGS = {
         "apps_desc": "O Levelo equilibra todos os apps que tocam som. Desligue os que ele deve "
                      "deixar em paz: o volume deles nunca será alterado.",
         "apps_search": "Pesquisar um app",
-        "apps_forget": "Remover da lista os apps inativos",
+        "apps_now": "Em uso agora",
+        "apps_other": "Outros apps",
         "apps_empty": "Ainda não há apps: eles aparecem aqui assim que tocam som.",
         "app_system": "Sons do sistema",
         "app_playing": "Tocando",
@@ -1028,7 +1034,8 @@ _SETTINGS = {
         "apps_desc": "Levelo выравнивает все приложения, воспроизводящие звук. Отключите те, "
                      "которые нужно оставить как есть: их громкость не будет меняться.",
         "apps_search": "Поиск приложения",
-        "apps_forget": "Убрать неактивные приложения из списка",
+        "apps_now": "Используются сейчас",
+        "apps_other": "Другие приложения",
         "apps_empty": "Пока нет приложений: они появятся здесь, как только начнут "
                       "воспроизводить звук.",
         "app_system": "Системные звуки",
@@ -1091,7 +1098,8 @@ _SETTINGS = {
         "apps_desc": "Levelo wyrównuje każdą aplikację, która odtwarza dźwięk. Wyłącz te, "
                      "których ma nie ruszać: ich głośność nigdy nie zostanie zmieniona.",
         "apps_search": "Szukaj aplikacji",
-        "apps_forget": "Usuń nieaktywne aplikacje z listy",
+        "apps_now": "Teraz w użyciu",
+        "apps_other": "Inne aplikacje",
         "apps_empty": "Jeszcze brak aplikacji: pojawią się tutaj, gdy tylko odtworzą dźwięk.",
         "app_system": "Dźwięki systemowe",
         "app_playing": "Odtwarza",
@@ -1151,7 +1159,8 @@ _SETTINGS = {
         "apps_desc": "Levelo ses çalan tüm uygulamaları dengeler. Dokunmaması gerekenleri "
                      "kapatın: ses düzeyleri asla değiştirilmez.",
         "apps_search": "Uygulama ara",
-        "apps_forget": "Etkin olmayan uygulamaları listeden kaldır",
+        "apps_now": "Şu anda kullanılan",
+        "apps_other": "Diğer uygulamalar",
         "apps_empty": "Henüz uygulama yok: ses çalmaya başladıkları anda burada görünürler.",
         "app_system": "Sistem sesleri",
         "app_playing": "Çalıyor",
@@ -1209,7 +1218,8 @@ _SETTINGS = {
         "warn_device": "{name} 未连接：正在使用 Windows 默认设备。",
         "apps_desc": "Levelo 会平衡所有播放声音的应用。关闭不需要改动的应用：它们的音量将永远不会被更改。",
         "apps_search": "搜索应用",
-        "apps_forget": "从列表中移除未活动的应用",
+        "apps_now": "正在使用",
+        "apps_other": "其他应用",
         "apps_empty": "暂无应用：应用一旦播放声音就会显示在这里。",
         "app_system": "系统声音",
         "app_playing": "正在播放",
@@ -1263,7 +1273,8 @@ _SETTINGS = {
         "apps_desc": "Levelo は音を再生するすべてのアプリを調整します。触れてほしくないアプリはオフにしてください。"
                      "その音量は一切変更されません。",
         "apps_search": "アプリを検索",
-        "apps_forget": "再生していないアプリを一覧から削除",
+        "apps_now": "使用中",
+        "apps_other": "その他のアプリ",
         "apps_empty": "まだアプリがありません：音を再生するとここに表示されます。",
         "app_system": "システム音",
         "app_playing": "再生中",

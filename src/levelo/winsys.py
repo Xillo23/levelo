@@ -124,6 +124,45 @@ def work_area():
     return rc.l, rc.t, rc.r, rc.b
 
 
+def panel_anchor():
+    """Work area of the monitor under the mouse (= where the tray icon was
+    clicked) and the side of the taskbar: 'bottom', 'top', 'left' or 'right'."""
+    class RECT(ctypes.Structure):
+        _fields_ = [("l", ctypes.c_long), ("t", ctypes.c_long),
+                    ("r", ctypes.c_long), ("b", ctypes.c_long)]
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", ctypes.c_ulong), ("rcMonitor", RECT), ("rcWork", RECT),
+                    ("dwFlags", ctypes.c_ulong)]
+
+    class POINT(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+    try:
+        u32 = ctypes.windll.user32
+        pt = POINT()
+        u32.GetCursorPos(ctypes.byref(pt))
+        u32.MonitorFromPoint.restype = ctypes.c_void_p
+        mon = u32.MonitorFromPoint(pt, 2)        # MONITOR_DEFAULTTONEAREST
+        mi = MONITORINFO()
+        mi.cbSize = ctypes.sizeof(MONITORINFO)
+        if not u32.GetMonitorInfoW(ctypes.c_void_p(mon), ctypes.byref(mi)):
+            raise OSError
+        m, w = mi.rcMonitor, mi.rcWork
+        if w.b < m.b:
+            edge = "bottom"
+        elif w.t > m.t:
+            edge = "top"
+        elif w.l > m.l:
+            edge = "left"
+        elif w.r < m.r:
+            edge = "right"
+        else:                                    # auto-hide taskbar
+            edge = "bottom"
+        return (w.l, w.t, w.r, w.b), edge
+    except Exception:
+        return work_area(), "bottom"
+
+
 def dwm_style(hwnd, dark):
     dwm = ctypes.windll.dwmapi
     for attr, val in ((20, int(dark)),   # dark border

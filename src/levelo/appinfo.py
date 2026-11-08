@@ -130,3 +130,89 @@ def _hicon_to_image(hicon, size):
     if img.getchannel("A").getextrema()[1] == 0:     # old icon without alpha
         img.putalpha(255)
     return img.copy()
+
+
+# ----------------------------------------------------------------- audio history
+# Windows remembers the volume of every app that ever played sound, per device:
+# that list is the most complete "apps that use audio" list there is.
+AUDIO_STORE = r"Software\Microsoft\Internet Explorer\LowRegistry\Audio\PolicyConfig\PropertyStore"
+_SKIP = {"svchost.exe", "rundll32.exe", "dllhost.exe", "runtimebroker.exe", "audiodg.exe",
+         "consent.exe", "taskhostw.exe", "levelo.exe", "explorer.exe", "searchhost.exe",
+         "shellexperiencehost.exe", "startmenuexperiencehost.exe", "systemsettings.exe"}
+
+
+_NOISE = ("helper", "overlay", "crashpad", "crashhandler", "crashreport", "updater",
+          "setup", "install", "unins")
+_WINDIR = (__import__("os").environ.get("SystemRoot", r"C:\Windows").lower() + "\\")
+GENERIC_DESC = ("windows® operating system", "operating system", "electron")
+
+
+def pretty_exe(name):
+    """'Dungeons-WinGDK-Shipping.exe' -> 'Dungeons'."""
+    import re
+    base = name[:-4] if name.lower().endswith(".exe") else name
+    base = re.sub(r"[-_](Win64|WinGDK|Win32)?[-_]?Shipping$", "", base, flags=re.I)
+    base = re.sub(r"[-_]Win64$", "", base, flags=re.I)
+    return base[:1].upper() + base[1:]
+
+
+def app_title(name, path, friendly=None):
+    desc = file_description(path)
+    if (desc and not any(g in desc.lower() for g in GENERIC_DESC) and len(desc) <= 40
+            and not desc.endswith(".")):
+        return desc
+    return (friendly or {}).get(name.lower()) or pretty_exe(name)
+
+
+def _dos_devices():
+    out = {}
+    buf = ctypes.create_unicode_buffer(1024)
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        if ctypes.windll.kernel32.QueryDosDeviceW(f"{letter}:", buf, 1024):
+            out[buf.value.lower()] = f"{letter}:"
+    return out
+
+
+def audio_history():
+    """[(exe name, full path)] of installed apps that played sound on this PC."""
+    import os
+    import winreg
+    found = {}
+    try:
+        devices = _dos_devices()
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUDIO_STORE) as root:
+            i = 0
+            while True:
+                try:
+                    sub = winreg.EnumKey(root, i)
+                except OSError:
+                    break
+                i += 1
+                try:
+                    with winreg.OpenKey(root, sub) as k:
+                        val = str(winreg.QueryValueEx(k, "")[0])
+                except OSError:
+                    continue
+                if "|" not in val:
+                    continue
+                nt = val.split("|", 1)[1].split("%b", 1)[0]
+                path = ""
+                low = nt.lower()
+                for dev, letter in devices.items():
+                    if low.startswith(dev + "\\"):
+                        path = letter + nt[len(dev):]
+                        break
+                name = os.path.basename(nt)
+                lname = name.lower()
+                if (not path or lname in _SKIP or not lname.endswith(".exe")
+                        or any(w in lname for w in _NOISE)
+                        or path.lower().startswith(_WINDIR)):
+                    continue
+                if os.path.exists(path):
+                    old = found.get(name.lower())
+                    # several versions (e.g. Discord app-1.0.x): keep the newest
+                    if old is None or os.path.getmtime(path) > os.path.getmtime(old[1]):
+                        found[name.lower()] = (name, path)
+    except Exception:
+        pass
+    return list(found.values())

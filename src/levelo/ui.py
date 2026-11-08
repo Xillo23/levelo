@@ -87,6 +87,7 @@ class App:
         self._flushed_peaks = 0
         self._last_flush = time.monotonic()
         self._last_seen = 0.0
+        self._last_theme = time.monotonic()
         self._thanks_until = 0.0
         self.update = None     # (version, url) when a newer release exists
 
@@ -144,6 +145,7 @@ class App:
     # ------------------------------------------------------------------ theme
     def _setup_theme(self):
         self.dark = winsys.apps_dark()
+        self._theme = (self.dark, winsys.taskbar_light())   # theme being shown
         sv_ttk.set_theme("dark" if self.dark else "light")
         fam = set(tkfont.families(self.root))
         self.icon_font = "Segoe Fluent Icons" if "Segoe Fluent Icons" in fam else "Segoe MDL2 Assets"
@@ -388,14 +390,6 @@ class App:
         self._save()
         self.engine.set_app_rules(s["call_protect"], s["app_rules"])
 
-    def forget_idle_apps(self):
-        s = self.settings
-        present = {a[0].lower() for a in self.engine.apps}
-        present |= {o[0].lower() for o in self.engine.other_apps}
-        s["seen_apps"] = {k: v for k, v in s["seen_apps"].items()
-                          if k in present or k in s["app_rules"]}
-        self._save()
-
     def report_bug(self):
         site = self.website or ""
         if "github.com/" in site:
@@ -411,8 +405,9 @@ class App:
         self.refresh()
         top.update_idletasks()
         h = top.winfo_reqheight()
-        _l, _t, r, b = winsys.work_area()
-        x, y, off = r - self.W - px(12), b - h - px(12), px(18)
+        self._anchor = winsys.panel_anchor()
+        x, y = self._panel_xy(h)
+        off = px(18) if self._anchor[1] != "top" else -px(18)
         top.geometry(f"{self.W}x{h}+{x}+{y + off}")
         top.attributes("-alpha", 0.0)
         top.deiconify()
@@ -568,8 +563,16 @@ class App:
             return
         self.top.update_idletasks()
         h = self.top.winfo_reqheight()
-        _l, _t, r, b = winsys.work_area()
-        self.top.geometry(f"{self.W}x{h}+{r - self.W - self.px(12)}+{b - h - self.px(12)}")
+        x, y = self._panel_xy(h)
+        self.top.geometry(f"{self.W}x{h}+{x}+{y}")
+
+    def _panel_xy(self, h):
+        """Next to the taskbar, on the monitor where the tray icon was clicked."""
+        (l, t_, r, b), edge = getattr(self, "_anchor", None) or winsys.panel_anchor()
+        m = self.px(12)
+        x = l + m if edge == "left" else r - self.W - m
+        y = t_ + m if edge == "top" else b - h - m
+        return x, max(t_ + m, y)
 
     def quit(self):
         self._flush_stats()
@@ -588,6 +591,20 @@ class App:
             self.tray.notify(t("welcome"), APP_NAME)
         except Exception:
             pass
+
+    def _follow_theme(self):
+        """Windows light/dark mode changed: repaint everything, like native apps."""
+        theme = (winsys.apps_dark(), winsys.taskbar_light())
+        if theme == self._theme:
+            return
+        self._setup_theme()
+        self._build_panel()
+        fg = (0, 0, 0, 255) if theme[1] else (255, 255, 255, 255)
+        self.ico_on = make_icon(64, fg=fg)
+        self.ico_off = make_icon(64, fg=fg, dim=True)
+        self._update_tray()
+        if self.settings_win is not None and self.settings_win.alive():
+            self.settings_win.build()
 
     # ------------------------------------------------------------------- tray
     def _build_tray(self):
@@ -695,6 +712,9 @@ class App:
             self._last_seen = time.monotonic()
             if remember_apps(self.settings, self.engine.apps, self.engine.other_apps):
                 self._save()
+        if time.monotonic() - self._last_theme > 3.0:
+            self._last_theme = time.monotonic()
+            self._follow_theme()
         if time.monotonic() - self._last_flush > 30.0:
             self._last_flush = time.monotonic()
             self._flush_stats()

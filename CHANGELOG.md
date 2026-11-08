@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.3 (beta)
+
+- Settings window rebuilt for smoothness: pages are built once and then only updated,
+  so nothing flickers, jumps or loses the scroll position any more.
+- **App list**: every app that ever played sound on this PC (from Windows' own audio
+  history), in two stable groups, *In use now* and *Other apps*, alphabetical, with real
+  names and icons. Apps no longer appear and disappear while they play.
+- Text wraps cleanly at any window size; the scrollbar appears only when needed and no
+  longer shifts the content.
+- Light/dark mode changes in Windows are applied immediately, without restarting.
+- The panel opens next to the taskbar on the right monitor, also with the taskbar at the
+  top, on the left or on a second screen.
+- Xbox Party Chat is recognised as a voice-call app.
+- Releases now include a SHA256 checksum file.
+
 ## 0.9.2 (beta)
 
 - New **Settings window**, like the Windows 11 Settings app: General, Devices, Apps,
