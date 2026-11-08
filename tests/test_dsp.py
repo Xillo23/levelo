@@ -122,6 +122,27 @@ class LevelerTest(unittest.TestCase):
         self.assertLessEqual(g, 0.5)
 
 
+class CallFreezeTest(unittest.TestCase):
+    def feed(self, lev, x, **kw):
+        g = 0.0
+        for i in range(0, len(x) - BLOCK + 1, BLOCK):
+            g = lev.process(x[i:i + BLOCK], **kw)
+        return g
+
+    def test_call_voice_does_not_move_gain(self):
+        lev = Leveler("normal")
+        g0 = self.feed(lev, speech(4, -34))            # quiet movie: raised
+        self.assertGreater(g0, 3)
+        g1 = self.feed(lev, speech(3, -18), freeze=True)  # friend talking loudly
+        self.assertAlmostEqual(g1, g0, delta=0.5)
+
+    def test_big_hit_still_cut_during_call(self):
+        lev = Leveler("normal")
+        self.feed(lev, speech(4, -34))
+        g = self.feed(lev, at_level(rng.standard_normal(SR // 2), 0), freeze=True)
+        self.assertLess(g, -10)
+
+
 class TranslationsTest(unittest.TestCase):
     def test_all_languages_complete(self):
         from levelo.i18n import LANGUAGES, STRINGS

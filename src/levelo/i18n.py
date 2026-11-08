@@ -631,6 +631,250 @@ _UPDATE = {
 for _code, _strings in _UPDATE.items():
     STRINGS[_code].update(_strings)
 
+# Settings page, devices, voice calls
+_SETTINGS = {
+    "en": {
+        "settings": "Settings", "back": "Back",
+        "set_device": "Output device",
+        "device_auto": "Automatic · {name}",
+        "device_off": "{name} (not connected)",
+        "device_hint": "Automatic follows the Windows default output, for example when you "
+                       "plug in headphones.",
+        "warn_device": "{name} is not connected: using the Windows default device.",
+        "set_calls": "Voice calls",
+        "calls_protect": "Don't touch voice calls",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp and similar apps keep their volume, and "
+                      "the voice of whoever is talking doesn't lower the movie.",
+        "call_sub": "In a call on {app}: their voice is left as it is",
+        "set_apps": "Apps to balance",
+        "apps_hint": "Turn off the apps Levelo should leave alone. The list shows the apps "
+                     "using this device.",
+        "apps_empty": "No app is using this device right now.",
+        "app_system": "System sounds",
+        "app_call_tag": "call",
+        "report_bug": "Report a problem",
+        "open_logs": "Open log folder",
+    },
+    "it": {
+        "settings": "Impostazioni", "back": "Indietro",
+        "set_device": "Dispositivo di uscita",
+        "device_auto": "Automatico · {name}",
+        "device_off": "{name} (non collegato)",
+        "device_hint": "Automatico segue l'uscita predefinita di Windows, per esempio quando "
+                       "colleghi le cuffie.",
+        "warn_device": "{name} non è collegato: uso il dispositivo predefinito di Windows.",
+        "set_calls": "Chiamate vocali",
+        "calls_protect": "Non toccare le chiamate",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp e simili restano al loro volume, e la "
+                      "voce di chi parla non fa abbassare il film.",
+        "call_sub": "In chiamata su {app}: la sua voce resta com'è",
+        "set_apps": "App da bilanciare",
+        "apps_hint": "Spegni le app che Levelo non deve toccare. L'elenco mostra le app che "
+                     "usano questo dispositivo.",
+        "apps_empty": "Nessuna app sta usando questo dispositivo.",
+        "app_system": "Suoni di sistema",
+        "app_call_tag": "chiamata",
+        "report_bug": "Segnala un problema",
+        "open_logs": "Apri cartella log",
+    },
+    "es": {
+        "settings": "Configuración", "back": "Atrás",
+        "set_device": "Dispositivo de salida",
+        "device_auto": "Automático · {name}",
+        "device_off": "{name} (no conectado)",
+        "device_hint": "Automático sigue la salida predeterminada de Windows, por ejemplo al "
+                       "conectar los auriculares.",
+        "warn_device": "{name} no está conectado: uso el dispositivo predeterminado de Windows.",
+        "set_calls": "Llamadas de voz",
+        "calls_protect": "No tocar las llamadas",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp y similares mantienen su volumen, y la "
+                      "voz de quien habla no baja la película.",
+        "call_sub": "En llamada en {app}: su voz se queda como está",
+        "set_apps": "Apps que equilibrar",
+        "apps_hint": "Desactiva las apps que Levelo no debe tocar. La lista muestra las apps "
+                     "que usan este dispositivo.",
+        "apps_empty": "Ninguna app está usando este dispositivo.",
+        "app_system": "Sonidos del sistema",
+        "app_call_tag": "llamada",
+        "report_bug": "Informar de un problema",
+        "open_logs": "Abrir carpeta de registros",
+    },
+    "de": {
+        "settings": "Einstellungen", "back": "Zurück",
+        "set_device": "Ausgabegerät",
+        "device_auto": "Automatisch · {name}",
+        "device_off": "{name} (nicht verbunden)",
+        "device_hint": "Automatisch folgt der Windows-Standardausgabe, z. B. wenn du "
+                       "Kopfhörer anschließt.",
+        "warn_device": "{name} ist nicht verbunden: Windows-Standardgerät wird verwendet.",
+        "set_calls": "Sprachanrufe",
+        "calls_protect": "Anrufe nicht verändern",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp und ähnliche behalten ihre Lautstärke, "
+                      "und die Stimme deines Gesprächspartners macht den Film nicht leiser.",
+        "call_sub": "Im Anruf über {app}: die Stimme bleibt unverändert",
+        "set_apps": "Auszugleichende Apps",
+        "apps_hint": "Schalte Apps aus, die Levelo nicht anfassen soll. Die Liste zeigt die "
+                     "Apps auf diesem Gerät.",
+        "apps_empty": "Gerade nutzt keine App dieses Gerät.",
+        "app_system": "Systemsounds",
+        "app_call_tag": "Anruf",
+        "report_bug": "Problem melden",
+        "open_logs": "Protokollordner öffnen",
+    },
+    "fr": {
+        "settings": "Paramètres", "back": "Retour",
+        "set_device": "Périphérique de sortie",
+        "device_auto": "Automatique · {name}",
+        "device_off": "{name} (non connecté)",
+        "device_hint": "Automatique suit la sortie par défaut de Windows, par exemple quand "
+                       "vous branchez un casque.",
+        "warn_device": "{name} n'est pas connecté : j'utilise le périphérique par défaut.",
+        "set_calls": "Appels vocaux",
+        "calls_protect": "Ne pas toucher aux appels",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp et similaires gardent leur volume, et "
+                      "la voix de votre interlocuteur ne baisse pas le film.",
+        "call_sub": "En appel sur {app} : sa voix reste telle quelle",
+        "set_apps": "Applis à équilibrer",
+        "apps_hint": "Désactivez les applis que Levelo ne doit pas toucher. La liste montre "
+                     "les applis qui utilisent ce périphérique.",
+        "apps_empty": "Aucune appli n'utilise ce périphérique.",
+        "app_system": "Sons système",
+        "app_call_tag": "appel",
+        "report_bug": "Signaler un problème",
+        "open_logs": "Ouvrir le dossier des journaux",
+    },
+    "pt": {
+        "settings": "Configurações", "back": "Voltar",
+        "set_device": "Dispositivo de saída",
+        "device_auto": "Automático · {name}",
+        "device_off": "{name} (não conectado)",
+        "device_hint": "Automático segue a saída padrão do Windows, por exemplo quando você "
+                       "conecta fones de ouvido.",
+        "warn_device": "{name} não está conectado: usando o dispositivo padrão do Windows.",
+        "set_calls": "Chamadas de voz",
+        "calls_protect": "Não mexer nas chamadas",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp e similares mantêm o volume, e a voz "
+                      "de quem fala não abaixa o filme.",
+        "call_sub": "Em chamada no {app}: a voz fica como está",
+        "set_apps": "Apps para equilibrar",
+        "apps_hint": "Desligue os apps que o Levelo não deve tocar. A lista mostra os apps "
+                     "que usam este dispositivo.",
+        "apps_empty": "Nenhum app está usando este dispositivo.",
+        "app_system": "Sons do sistema",
+        "app_call_tag": "chamada",
+        "report_bug": "Relatar um problema",
+        "open_logs": "Abrir pasta de logs",
+    },
+    "ru": {
+        "settings": "Настройки", "back": "Назад",
+        "set_device": "Устройство вывода",
+        "device_auto": "Автоматически · {name}",
+        "device_off": "{name} (не подключено)",
+        "device_hint": "«Автоматически» следует за устройством Windows по умолчанию, "
+                       "например при подключении наушников.",
+        "warn_device": "{name} не подключено: используется устройство по умолчанию.",
+        "set_calls": "Голосовые звонки",
+        "calls_protect": "Не трогать звонки",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp и похожие сохраняют свою громкость, а "
+                      "голос собеседника не делает фильм тише.",
+        "call_sub": "Звонок в {app}: голос остаётся как есть",
+        "set_apps": "Приложения для выравнивания",
+        "apps_hint": "Отключите приложения, которые Levelo не должен трогать. В списке "
+                     "приложения, использующие это устройство.",
+        "apps_empty": "Сейчас это устройство не использует ни одно приложение.",
+        "app_system": "Системные звуки",
+        "app_call_tag": "звонок",
+        "report_bug": "Сообщить о проблеме",
+        "open_logs": "Открыть папку журналов",
+    },
+    "pl": {
+        "settings": "Ustawienia", "back": "Wstecz",
+        "set_device": "Urządzenie wyjściowe",
+        "device_auto": "Automatycznie · {name}",
+        "device_off": "{name} (niepodłączone)",
+        "device_hint": "Automatycznie podąża za domyślnym wyjściem Windows, np. po "
+                       "podłączeniu słuchawek.",
+        "warn_device": "{name} nie jest podłączone: używam domyślnego urządzenia Windows.",
+        "set_calls": "Rozmowy głosowe",
+        "calls_protect": "Nie ruszaj rozmów",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp i podobne zachowują swoją głośność, a "
+                      "głos rozmówcy nie ścisza filmu.",
+        "call_sub": "Rozmowa w {app}: głos zostaje bez zmian",
+        "set_apps": "Aplikacje do wyrównania",
+        "apps_hint": "Wyłącz aplikacje, których Levelo nie ma ruszać. Lista pokazuje "
+                     "aplikacje używające tego urządzenia.",
+        "apps_empty": "Żadna aplikacja nie używa teraz tego urządzenia.",
+        "app_system": "Dźwięki systemowe",
+        "app_call_tag": "rozmowa",
+        "report_bug": "Zgłoś problem",
+        "open_logs": "Otwórz folder logów",
+    },
+    "tr": {
+        "settings": "Ayarlar", "back": "Geri",
+        "set_device": "Çıkış aygıtı",
+        "device_auto": "Otomatik · {name}",
+        "device_off": "{name} (bağlı değil)",
+        "device_hint": "Otomatik, Windows varsayılan çıkışını izler; örneğin kulaklık "
+                       "taktığınızda.",
+        "warn_device": "{name} bağlı değil: Windows varsayılan aygıtı kullanılıyor.",
+        "set_calls": "Sesli aramalar",
+        "calls_protect": "Aramalara dokunma",
+        "calls_desc": "Discord, Teams, Zoom, WhatsApp ve benzerleri seslerini korur; "
+                      "konuşan kişinin sesi filmi kısmaz.",
+        "call_sub": "{app} üzerinde aramada: ses olduğu gibi kalır",
+        "set_apps": "Dengelenecek uygulamalar",
+        "apps_hint": "Levelo'nun dokunmaması gereken uygulamaları kapatın. Liste bu aygıtı "
+                     "kullanan uygulamaları gösterir.",
+        "apps_empty": "Şu anda bu aygıtı kullanan uygulama yok.",
+        "app_system": "Sistem sesleri",
+        "app_call_tag": "arama",
+        "report_bug": "Sorun bildir",
+        "open_logs": "Günlük klasörünü aç",
+    },
+    "zh": {
+        "settings": "设置", "back": "返回",
+        "set_device": "输出设备",
+        "device_auto": "自动 · {name}",
+        "device_off": "{name}（未连接）",
+        "device_hint": "“自动”跟随 Windows 默认输出设备，例如插入耳机时。",
+        "warn_device": "{name} 未连接：正在使用 Windows 默认设备。",
+        "set_calls": "语音通话",
+        "calls_protect": "不改动通话",
+        "calls_desc": "Discord、Teams、Zoom、WhatsApp 等应用保持原音量，对方说话也不会让电影变小声。",
+        "call_sub": "正在 {app} 通话：对方的声音保持不变",
+        "set_apps": "要平衡的应用",
+        "apps_hint": "关闭 Levelo 不应改动的应用。列表显示正在使用此设备的应用。",
+        "apps_empty": "目前没有应用在使用此设备。",
+        "app_system": "系统声音",
+        "app_call_tag": "通话",
+        "report_bug": "报告问题",
+        "open_logs": "打开日志文件夹",
+    },
+    "ja": {
+        "settings": "設定", "back": "戻る",
+        "set_device": "出力デバイス",
+        "device_auto": "自動 · {name}",
+        "device_off": "{name}（未接続）",
+        "device_hint": "「自動」は Windows の既定の出力に従います（ヘッドホンを接続したときなど）。",
+        "warn_device": "{name} が接続されていません：Windows の既定のデバイスを使用中です。",
+        "set_calls": "音声通話",
+        "calls_protect": "通話には触れない",
+        "calls_desc": "Discord、Teams、Zoom、WhatsApp などは音量がそのまま保たれ、"
+                      "相手の声で映画の音量が下がることもありません。",
+        "call_sub": "{app} で通話中：相手の声はそのままです",
+        "set_apps": "調整するアプリ",
+        "apps_hint": "Levelo に触れてほしくないアプリをオフにします。"
+                     "このデバイスを使用中のアプリが表示されます。",
+        "apps_empty": "このデバイスを使用しているアプリはありません。",
+        "app_system": "システム音",
+        "app_call_tag": "通話",
+        "report_bug": "問題を報告",
+        "open_logs": "ログフォルダーを開く",
+    },
+}
+for _code, _strings in _SETTINGS.items():
+    STRINGS[_code].update(_strings)
+
 _current = "en"
 
 

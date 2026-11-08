@@ -57,8 +57,12 @@ There's nothing to do: set the volume as you always do. Click the tray icon to o
 | Live graph | What it's doing right now: ▲ raising, ▼ lowering. |
 | Intensity | **Light**: keeps the movie's dynamics · **Normal**: recommended · **Night**: maximum leveling |
 | Start with Windows | Starts hidden in the notification area at login. |
+| ⚙ Settings | Output device, voice calls, which apps to balance. |
 
-Right-click the icon for the menu: intensity, language, start with Windows, quit.
+Right-click the icon for the menu: intensity, settings, language, start with Windows, quit.
+
+**Voice calls:** Discord, Teams, Zoom, WhatsApp, Telegram and similar apps are left alone
+by default: your friend's voice keeps its volume and doesn't make the movie quieter.
 
 > **Tip:** to raise quiet voices, Levelo needs a bit of room. If your Windows
 > volume is at 100%, turn it down a little and turn up your speakers/TV/monitor instead.
@@ -91,17 +95,19 @@ which is on the roadmap as an optional mode.
 **Windows SmartScreen says "Windows protected your PC".**
 New apps without a paid code-signing certificate show this warning. Click *More info* →
 *Run anyway*. The full source code is in this repository and every release is built
-automatically by GitHub Actions from it.
+from it.
 
 **My antivirus flags it.**
 Apps packaged with PyInstaller sometimes trigger false positives. Please report it to your
 antivirus vendor, and open an issue so we can track it.
 
 **Does it work with headphones / Bluetooth / HDMI?**
-Yes. It always follows the current default output device and switches with it.
+Yes. By default it follows the current Windows default output device and switches with
+it. In Settings you can pick a specific device instead.
 
 **Can I exclude an app?**
-Not yet. It's on the roadmap.
+Yes: Settings → *Apps to balance*, turn its switch off. Voice-call apps are excluded
+automatically.
 
 **Does it connect to the internet?**
 Only to check for updates: twice a day it downloads two public files from this GitHub

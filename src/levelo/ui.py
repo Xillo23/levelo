@@ -2,6 +2,7 @@
 
 import ctypes
 import queue
+import re
 import threading
 import time
 import tkinter as tk
@@ -16,11 +17,11 @@ from . import DONATE_URL as DEFAULT_DONATE_URL
 from . import REPO_URL as DEFAULT_WEBSITE
 from . import i18n, winsys
 from .dsp import DEFAULT_PRESET, PRESETS
-from .engine import Engine
+from .engine import CALL_APPS, Engine
 from .i18n import t
 from .icons import app_icon, make_icon, png_b64
 from .online import OnlineChecker, is_newer
-from .storage import SETTINGS_FILE, load_json, save_json
+from .storage import DATA_DIR, SETTINGS_FILE, load_json, save_json
 
 PRESET_ORDER = ("light", "normal", "night")
 
@@ -32,11 +33,23 @@ ASK_MAX = 3
 DONOR_PAUSE_S = 365 * 86400   # after "donate"/"I already donated": quiet for 1 year
 OLD_PRESET_NAMES = {"Leggero": "light", "Normale": "normal", "Notte": "night"}
 
+# Segoe Fluent Icons / MDL2 glyphs
+ICON_SETTINGS, ICON_BACK, ICON_SPEAKER, ICON_CHEVRON = "", "", "", ""
+
 
 def mix(c1, c2, k):
     a = [int(c1[i:i + 2], 16) for i in (1, 3, 5)]
     b = [int(c2[i:i + 2], 16) for i in (1, 3, 5)]
     return "#" + "".join(f"{int(x * k + y * (1 - k)):02x}" for x, y in zip(a, b))
+
+
+def split_device_name(name):
+    """'Speakers (2- Realtek Audio)' -> ('Speakers', 'Realtek Audio'), like the
+    two lines of the Windows sound settings."""
+    if name.endswith(")") and " (" in name:
+        i = name.index(" (")
+        return name[:i], re.sub(r"^\d+-\s*", "", name[i + 2:-1])
+    return name, ""
 
 
 def preset_label(key):
@@ -57,7 +70,11 @@ class App:
             "ask_next_hours": ASK_FIRST_HOURS, "ask_count": 0, "ask_toasted": 0,
             "donor_until": 0.0,    # unix time: no asks until then
             "links": {},           # cached links.json from the repository
-            "update_notified": ""})
+            "update_notified": "",
+            "device": None,        # output device id; None = Windows default
+            "device_name": "",     # its name, shown while it is disconnected
+            "call_protect": True,  # never touch voice-call apps
+            "app_rules": {}})      # app name (lowercase) -> balance it?
         s = self.settings
         s["preset"] = OLD_PRESET_NAMES.get(s["preset"], s["preset"])
         if s.pop("donated", False) and not s["donor_until"]:
@@ -67,7 +84,10 @@ class App:
         lang = s.get("language") or winsys.installer_language() or i18n.system_language()
         i18n.set_language(lang)
 
-        self.engine = Engine(s["enabled"], s["preset"])
+        if not isinstance(s.get("app_rules"), dict):
+            s["app_rules"] = {}
+        self.engine = Engine(s["enabled"], s["preset"], s["device"], s["call_protect"],
+                             s["app_rules"])
         self.engine.start()
         self._flushed_s = 0.0
         self._flushed_peaks = 0
@@ -114,6 +134,7 @@ class App:
         self.dark = winsys.apps_dark()
         sv_ttk.set_theme("dark" if self.dark else "light")
         fam = set(tkfont.families(self.root))
+        self.icon_font = "Segoe Fluent Icons" if "Segoe Fluent Icons" in fam else "Segoe MDL2 Assets"
         base = "Segoe UI Variable Text" if "Segoe UI Variable Text" in fam else "Segoe UI"
         disp = "Segoe UI Variable Display" if "Segoe UI Variable Display" in fam else "Segoe UI"
         self.F = {"title": (disp, 12, "bold"), "big": (disp, 15, "bold"),
@@ -121,13 +142,16 @@ class App:
         self.scale = self.root.winfo_fpixels("1i") / 96.0
         if self.dark:
             self.pal = dict(bg="#1c1c1c", card="#2b2b2b", border="#404040", fg="#ffffff",
-                            sub="#a8a8a8", accent="#60cdff", boost="#6ccb5f", cut="#fc9d4f", grid="#3a3a3a")
+                            sub="#a8a8a8", hover="#2d2d2d", accent="#60cdff", boost="#6ccb5f", cut="#fc9d4f", grid="#3a3a3a")
         else:
             self.pal = dict(bg="#fafafa", card="#ffffff", border="#d6d6d6", fg="#1b1b1b",
-                            sub="#616161", accent="#005fb8", boost="#0f7b0f", cut="#c75000", grid="#ebebeb")
+                            sub="#616161", hover="#ededed", accent="#005fb8", boost="#0f7b0f", cut="#c75000", grid="#ebebeb")
         st = ttk.Style()
         st.configure("Panel.TFrame", background=self.pal["bg"])
         st.configure("ALCard.TFrame", background=self.pal["card"])
+        for name in ("Card.TRadiobutton", "Card.Switch.TCheckbutton"):
+            st.configure(name, background=self.pal["card"])
+            st.map(name, background=[("active", self.pal["card"])])
         self.icon_photo = tk.PhotoImage(data=png_b64(app_icon(64)))
         self.root.iconphoto(True, self.icon_photo)
         self.fill_up = mix(self.pal["boost"], self.pal["card"], 0.30)
@@ -176,14 +200,20 @@ class App:
         ttk.Checkbutton(head, style="Switch.TCheckbutton", variable=self.enabled_var,
                         command=lambda: self.set_enabled(self.enabled_var.get())
                         ).pack(side="right")
+        self._icon_button(head, ICON_SETTINGS, t("settings"),
+                          lambda: self.show_page("settings")).pack(side="right",
+                                                                   padx=(0, px(6)))
+        self.head = head
 
-        self.update_lbl = tk.Label(outer, text="", bg=pal["bg"], fg=pal["accent"],
+        main = self.main = ttk.Frame(outer, style="Panel.TFrame")
+        main.pack(fill="x")
+        self.update_lbl = tk.Label(main, text="", bg=pal["bg"], fg=pal["accent"],
                                    font=(self.F["small"][0], self.F["small"][1], "underline"),
                                    cursor="hand2", bd=0, anchor="w")
         self.update_lbl.bind("<Button-1>", lambda e: self.update and winsys.open_url(self.update[1]))
         self.update_shown = False
 
-        card = tk.Frame(outer, bg=pal["card"], highlightthickness=1,
+        card = tk.Frame(main, bg=pal["card"], highlightthickness=1,
                         highlightbackground=pal["border"], bd=0)
         card.pack(fill="x", pady=(px(16), 0))
         self.status_card = card
@@ -202,9 +232,20 @@ class App:
         leg.pack(fill="x", pady=(px(4), 0))
         self._label(leg, t("graph_window"), "cardsub").pack(side="left")
         self._label(leg, t("graph_legend"), "cardsub").pack(side="right")
+        # which output is being balanced (click: settings)
+        devrow = tk.Frame(cin, bg=pal["card"], cursor="hand2")
+        devrow.pack(fill="x", pady=(px(8), 0))
+        tk.Label(devrow, text=ICON_SPEAKER, font=(self.icon_font, 10), bg=pal["card"],
+                 fg=pal["sub"], bd=0).pack(side="left")
+        self.dev_lbl = self._label(devrow, "", "cardsub", anchor="w")
+        self.dev_lbl.pack(side="left", fill="x", expand=True, padx=(px(6), 0))
+        tk.Label(devrow, text=ICON_CHEVRON, font=(self.icon_font, 8), bg=pal["card"],
+                 fg=pal["sub"], bd=0).pack(side="right")
+        for w in (devrow, *devrow.winfo_children()):
+            w.bind("<Button-1>", lambda e: self.show_page("settings"))
 
-        self._label(outer, t("intensity"), "body").pack(anchor="w", pady=(px(16), px(6)))
-        seg = ttk.Frame(outer, style="Panel.TFrame")
+        self._label(main, t("intensity"), "body").pack(anchor="w", pady=(px(16), px(6)))
+        seg = ttk.Frame(main, style="Panel.TFrame")
         seg.pack(fill="x")
         self.preset_var = tk.StringVar(value=self.settings["preset"])
         for i, key in enumerate(PRESET_ORDER):
@@ -214,13 +255,13 @@ class App:
                             ).grid(row=0, column=i, sticky="ew",
                                    padx=(0 if i == 0 else px(4), 0))
             seg.columnconfigure(i, weight=1, uniform="seg")
-        self.preset_desc = self._label(outer, "", "sub", wraplength=wrap, justify="left")
+        self.preset_desc = self._label(main, "", "sub", wraplength=wrap, justify="left")
         self.preset_desc.pack(anchor="w", pady=(px(6), 0))
-        self.warn = self._label(outer, "", "warn", wraplength=wrap, justify="left")
+        self.warn = self._label(main, "", "warn", wraplength=wrap, justify="left")
         self.warn.pack(anchor="w")
 
         # support card (shown only when it is time to ask)
-        self.ask_card = tk.Frame(outer, bg=pal["card"], highlightthickness=1,
+        self.ask_card = tk.Frame(main, bg=pal["card"], highlightthickness=1,
                                  highlightbackground=pal["border"], bd=0)
         ain = ttk.Frame(self.ask_card, style="ALCard.TFrame",
                         padding=(px(14), px(10), px(14), px(12)))
@@ -245,9 +286,9 @@ class App:
         done.bind("<Button-1>", lambda e: self.already_donated())
         self.ask_shown = False
 
-        self.sep = ttk.Separator(outer)
+        self.sep = ttk.Separator(main)
         self.sep.pack(fill="x", pady=(px(10), px(10)))
-        foot = ttk.Frame(outer, style="Panel.TFrame")
+        foot = ttk.Frame(main, style="Panel.TFrame")
         foot.pack(fill="x")
         self.auto_var = tk.BooleanVar(value=winsys.autostart_enabled())
         ttk.Checkbutton(foot, text=t("autostart"), variable=self.auto_var,
@@ -258,16 +299,197 @@ class App:
         if self.donate_url and not self._is_donor():
             self.donate_btn = ttk.Button(foot, text=t("donate_short"), command=self.donate)
             self.donate_btn.pack(side="right", padx=(0, px(6)))
-        bottom = ttk.Frame(outer, style="Panel.TFrame")
+        bottom = ttk.Frame(main, style="Panel.TFrame")
         bottom.pack(fill="x", pady=(px(10), 0))
         self._label(bottom, t("footer"), "sub", justify="left").pack(side="left")
         self._label(bottom, f"v{__version__}" + (" beta" if BETA else ""), "sub"
                     ).pack(side="right", anchor="s")
 
+        self._build_settings(outer, wrap)
+        page, self.page = getattr(self, "page", "main"), "main"
+
         top.bind("<FocusOut>", self._on_focus_out)
-        top.bind("<Escape>", lambda e: self.hide())
+        top.bind("<Escape>", lambda e: self.show_page("main") if self.page != "main"
+                 else self.hide())
         if was_shown:
             self.show()
+            self.show_page(page)
+
+    # --------------------------------------------------------------- settings
+    def _icon_button(self, parent, glyph, tip, command, size=11):
+        """Flat Fluent-icon button (like the gear in Windows flyouts)."""
+        pal = self.pal
+        b = tk.Label(parent, text=glyph, font=(self.icon_font, size), bg=pal["bg"],
+                     fg=pal["fg"], bd=0, cursor="hand2", padx=self.px(7), pady=self.px(5))
+        b.bind("<Enter>", lambda e: b.config(bg=pal["hover"]))
+        b.bind("<Leave>", lambda e: b.config(bg=pal["bg"]))
+        b.bind("<Button-1>", lambda e: command())
+        b.tip = tip
+        return b
+
+    def _section(self, parent, title, first=False):
+        lbl = self._label(parent, title, "body")
+        lbl.config(font=(self.F["body"][0], self.F["body"][1], "bold"))
+        lbl.pack(anchor="w", pady=(0 if first else self.px(16), self.px(6)))
+
+    def _card(self, parent):
+        pal, px = self.pal, self.px
+        card = tk.Frame(parent, bg=pal["card"], highlightthickness=1,
+                        highlightbackground=pal["border"], bd=0)
+        card.pack(fill="x")
+        inner = ttk.Frame(card, style="ALCard.TFrame", padding=(px(12), px(8), px(12), px(8)))
+        inner.pack(fill="x")
+        return inner
+
+    def _build_settings(self, outer, wrap):
+        px, pal = self.px, self.pal
+        page = self.settings_page = ttk.Frame(outer, style="Panel.TFrame")
+        bar = ttk.Frame(page, style="Panel.TFrame")
+        bar.pack(fill="x", pady=(0, px(12)))
+        self._icon_button(bar, ICON_BACK, t("back"),
+                          lambda: self.show_page("main")).pack(side="left")
+        self._label(bar, t("settings"), "title").pack(side="left", padx=(px(6), 0))
+
+        # output device
+        self._section(page, t("set_device"), first=True)
+        self.dev_card = self._card(page)
+        self.dev_var = tk.StringVar(value=self.settings.get("device") or "")
+        self._label(page, t("device_hint"), "sub", wraplength=wrap, justify="left"
+                    ).pack(anchor="w", pady=(px(6), 0))
+
+        # voice calls
+        self._section(page, t("set_calls"))
+        cc = self._card(page)
+        self.calls_var = tk.BooleanVar(value=self.settings.get("call_protect", True))
+        ttk.Checkbutton(cc, text=t("calls_protect"), style="Card.Switch.TCheckbutton",
+                        variable=self.calls_var,
+                        command=lambda: self.set_call_protect(self.calls_var.get())
+                        ).pack(anchor="w")
+        tk.Label(cc, text=t("calls_desc"), bg=pal["card"], fg=pal["sub"],
+                 font=self.F["small"], wraplength=wrap - px(30), justify="left", bd=0
+                 ).pack(anchor="w", pady=(px(4), 0))
+
+        # apps
+        self._section(page, t("set_apps"))
+        self.apps_card = self._card(page)
+        self._label(page, t("apps_hint"), "sub", wraplength=wrap, justify="left"
+                    ).pack(anchor="w", pady=(px(6), 0))
+
+        ttk.Separator(page).pack(fill="x", pady=(px(14), px(10)))
+        links = ttk.Frame(page, style="Panel.TFrame")
+        links.pack(fill="x")
+        for text, fn in ((t("report_bug"), self.report_bug),
+                         (t("open_logs"), lambda: winsys.open_url(DATA_DIR))):
+            lk = tk.Label(links, text=text, bg=pal["bg"], fg=pal["accent"], cursor="hand2",
+                          font=(self.F["small"][0], self.F["small"][1], "underline"), bd=0)
+            lk.pack(side="left", padx=(0, px(14)))
+            lk.bind("<Button-1>", lambda e, fn=fn: fn())
+        self._dyn_sig = None
+
+    def show_page(self, page):
+        if not self.shown:
+            self.show()
+        if page == self.page:
+            return
+        self.page = page
+        if page == "settings":
+            self.head.pack_forget()
+            self.main.pack_forget()
+            self._dyn_sig = None
+            self._refresh_settings()
+            self.settings_page.pack(fill="x")
+        else:
+            self.settings_page.pack_forget()
+            self.head.pack(fill="x")
+            self.main.pack(fill="x")
+            self.refresh()
+        self.top.focus_set()
+        self._resize()
+
+    @staticmethod
+    def _short(name, n=44):
+        return name if len(name) <= n else name[:n - 1] + "…"
+
+    def _app_label(self, name):
+        if name == "System":
+            return t("app_system")
+        base = name[:-4] if name.lower().endswith(".exe") else name
+        return base[:1].upper() + base[1:]
+
+    def _refresh_settings(self):
+        """Rebuild the device and app lists when they change."""
+        eng, s, px, pal = self.engine, self.settings, self.px, self.pal
+        sig = (eng.devices, eng.default_name, eng.apps, s.get("device"), eng.device_missing)
+        if sig == self._dyn_sig:
+            return
+        self._dyn_sig = sig
+        for w in self.dev_card.winfo_children() + self.apps_card.winfo_children():
+            w.destroy()
+
+        self.dev_var.set(s.get("device") or "")
+        dname, _ = split_device_name(eng.default_name or "—")
+        choices = [("", t("device_auto", name=self._short(dname, 30)), "")]
+        choices += [(i, *split_device_name(n)) for i, n in eng.devices]
+        if s.get("device") and s["device"] not in dict(eng.devices):
+            off, _ = split_device_name(s.get("device_name") or "?")
+            choices.append((s["device"], t("device_off", name=self._short(off, 28)), ""))
+        for dev_id, label, adapter in choices:
+            ttk.Radiobutton(self.dev_card, text=self._short(label), value=dev_id,
+                            variable=self.dev_var, style="Card.TRadiobutton",
+                            command=lambda: self.set_device(self.dev_var.get())
+                            ).pack(anchor="w", pady=(px(2), 0))
+            if adapter:
+                tk.Label(self.dev_card, text=self._short(adapter, 48), bg=pal["card"],
+                         fg=pal["sub"], font=self.F["small"], bd=0
+                         ).pack(anchor="w", padx=(px(28), 0))
+
+        if not eng.apps:
+            tk.Label(self.apps_card, text=t("apps_empty"), bg=pal["card"], fg=pal["sub"],
+                     font=self.F["small"], bd=0).pack(anchor="w", pady=px(2))
+        for name, excluded, is_call in eng.apps:
+            row = ttk.Frame(self.apps_card, style="ALCard.TFrame")
+            row.pack(fill="x", pady=px(1))
+            var = tk.BooleanVar(value=not excluded)
+            ttk.Checkbutton(row, text=self._short(self._app_label(name), 30),
+                            style="Card.Switch.TCheckbutton", variable=var,
+                            command=lambda n=name, v=var: self.set_app_rule(n, v.get())
+                            ).pack(side="left")
+            if is_call:
+                tk.Label(row, text=t("app_call_tag"), bg=pal["card"], fg=pal["sub"],
+                         font=self.F["small"], bd=0).pack(side="right")
+        self.top.focus_set()
+        self._resize()
+
+    def set_device(self, dev_id):
+        s = self.settings
+        s["device"] = dev_id or None
+        s["device_name"] = dict(self.engine.devices).get(dev_id, "") if dev_id else ""
+        self._save()
+        self.engine.set_device(s["device"])
+        self._dyn_sig = None
+
+    def set_call_protect(self, on):
+        s = self.settings
+        s["call_protect"] = bool(on)
+        # the switch wins over earlier per-app choices for call apps
+        call_names = {n.lower() for n, _e, c in self.engine.apps if c}
+        s["app_rules"] = {k: v for k, v in s["app_rules"].items()
+                          if k not in call_names and k not in CALL_APPS}
+        self._save()
+        self.engine.set_app_rules(on, s["app_rules"])
+        self._dyn_sig = None
+
+    def set_app_rule(self, name, balance):
+        s = self.settings
+        s["app_rules"][name.lower()] = bool(balance)
+        self._save()
+        self.engine.set_app_rules(s["call_protect"], s["app_rules"])
+
+    def report_bug(self):
+        site = self.website or ""
+        if "github.com/" in site:
+            site = site.rstrip("/") + "/issues/new/choose"
+        winsys.open_url(site)
 
     def show(self):
         top, px = self.top, self.px
@@ -303,6 +525,11 @@ class App:
             self.top.withdraw()
             self.shown = False
             self.hidden_at = time.monotonic()
+            if self.page != "main":   # like Windows flyouts: reopen on the main page
+                self.settings_page.pack_forget()
+                self.head.pack(fill="x")
+                self.main.pack(fill="x")
+                self.page = "main"
 
     def toggle(self):
         if self.shown:
@@ -476,6 +703,7 @@ class App:
               act(lambda: self.set_enabled(not s["enabled"])),
               checked=lambda it: s["enabled"]),
             I(lambda it: t("menu_intensity"), M(*[preset_item(k) for k in PRESET_ORDER])),
+            I(lambda it: t("settings"), act(lambda: self.show_page("settings"))),
             I(lambda it: t("menu_language"),
               M(*[lang_item(c, n) for c, n in i18n.LANGUAGES.items()])),
             M.SEPARATOR,
@@ -563,6 +791,9 @@ class App:
     def refresh(self):
         eng, s = self.engine, self.settings
         g = eng.gain
+        if self.page == "settings":
+            self._refresh_settings()
+            return
         if eng.error:
             self.status_sub.config(text=t("status_error"))
             big, sub = t("error_big"), t("error_sub")
@@ -580,11 +811,19 @@ class App:
                 big, sub = t("quiet_big", db=f"{g:.0f}"), t("quiet_sub")
             else:
                 big, sub = t("ok_big"), t("ok_sub")
+            if eng.call_app:
+                sub = t("call_sub", app=self._app_label(eng.call_app))
         self.state_big.config(text=big)
         self.state_sub.config(text=sub)
         self.preset_desc.config(text=t(f"desc_{s['preset']}"))
-        if s["enabled"] and eng.headroom_short:
-            self.warn.config(text=t("warn_headroom"))
+        self.dev_lbl.config(text=self._short(split_device_name(eng.device or "—")[0]))
+        warn = ""
+        if eng.device_missing:
+            warn = t("warn_device", name=self._short(s.get("device_name") or "?", 30))
+        elif s["enabled"] and eng.headroom_short:
+            warn = t("warn_headroom")
+        if warn:
+            self.warn.config(text=warn)
             self.warn.pack_configure(pady=(self.px(8), 0))
         else:
             self.warn.config(text="")

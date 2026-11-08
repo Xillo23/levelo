@@ -87,8 +87,21 @@ class Leveler:
         self.in_db = -100.0
         self.state = "silence"   # silence | loud | quiet | ok
 
-    def process(self, mono, boost_cap=HEADROOM):
+    def process(self, mono, boost_cap=HEADROOM, freeze=False):
+        """freeze=True: someone in a voice call is talking. Their voice must not
+        move the movie's volume, so the measurement and the gain stay as they
+        are; only a really loud hit (12 dB above the usual peak limit) is cut."""
         p_win, p_blk, voice = self.meter.push(mono)
+        if freeze and self.short_p is not None:
+            fast_db = pow_to_db(max(p_win, p_blk * 0.7))
+            peak_limit = (REF_DB + self.p["peak_margin"]) - fast_db
+            if peak_limit + 12.0 < min(self.gain, 0.0):
+                self.gain += (max(-self.p["max_cut"] - 6.0, peak_limit) - self.gain) * tc(0.004)
+                self.hold = 0.35
+                self.state = "loud"
+            elif self.hold > 0:
+                self.hold -= BLOCK_S
+            return self.gain
         if self.short_p is None:
             self.short_p = p_win
             self.long_p = p_win
