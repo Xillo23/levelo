@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.6 (beta)
+
+- **Important fix — please update.** On some PCs Windows keeps a trace record in kernel
+  memory for each request an app makes to the audio service. Levelo 0.9.5 made hundreds
+  to thousands of these requests per second (several for every app with sound open,
+  every 10 ms), so with games and browsers open that hidden kernel memory could grow
+  by gigabytes, slowing the PC and making shutdown hang. Task Manager didn't show it
+  under any app. Levelo now makes 10–20 times fewer requests, and the number no longer
+  grows with the number of open apps: only the apps that are playing follow the volume
+  in real time, sound meters are read only during a call, and the audio sessions are
+  re-read only when something changes.
+- Uses about 500 MB less memory: numpy's math library no longer reserves memory for a
+  thread per CPU core that Levelo never used.
+- When an output device keeps failing (screen asleep, device being reset), Levelo waits
+  longer and longer between retries (up to 30 s) instead of reopening it every second.
+
 ## 0.9.5 (beta)
 
 - **Much lighter**: CPU use down from ~12% to ~3–4% of one core (well under 1% of the

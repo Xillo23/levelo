@@ -22,6 +22,18 @@ from .storage import STATE_FILE, load_json, log, save_json
 
 SESSION_MIN_DB = -60.0
 
+# How often we talk to the Windows audio service (each call can leave a trace
+# record in the kernel: keep the total to a few dozen per second).
+POLL_S = 1.0          # which apps are playing; new apps (session count)
+FULL_SCAN_S = 4.0     # full session scan + idle apps catch up with the volume
+WRITE_S = 0.05        # playing apps follow the gain at most 20 times a second...
+WRITE_MIN_DB = 0.2    # ...when it moved at least this much
+IDLE_STEP_DB = 3.0    # silent apps are rewritten only when this far behind
+CUT_DB = 1.0          # a drop this big (a bang) is written at once
+SETTLE_S = 0.5        # smaller leftovers are written after this long
+PEAKS_EVERY = 10      # blocks (10 ms) between meter reads, only during a call
+MASTER_EVERY = 25     # blocks between master volume reads
+
 # Voice-call apps (process names, lowercase). By default their volume is never
 # changed and their sound does not drive the balancing: the voice of whoever
 # is calling stays as it is while the movie is balanced.
@@ -105,11 +117,11 @@ def process_info(pid):
 
 
 class Session:
-    __slots__ = ("name", "sav", "meter", "path", "playing")
+    __slots__ = ("name", "sav", "meter", "path", "playing", "ctl")
 
-    def __init__(self, name, sav, meter, path="", playing=False):
+    def __init__(self, name, sav, meter, path="", playing=False, ctl=None):
         self.name, self.sav, self.meter = name, sav, meter
-        self.path, self.playing = path, playing
+        self.path, self.playing, self.ctl = path, playing, ctl
 
 
 class WinAudio:
@@ -137,6 +149,9 @@ class WinAudio:
         self.store, self.dev_id = store, device_id
         self.restore = store.take(device_id)   # this device's state (own copy)
         self.sessions = {}               # key -> Session
+        self._ignored = set()            # our own sessions
+        self._count = -1                 # session count at the last full scan
+        self._last_full = 0.0
         self.written = {}                # key -> (last scalar we wrote, offset dB)
         self.dirty = False               # restore changed, save at next refresh
         self.session_db = 0.0
@@ -182,30 +197,58 @@ class WinAudio:
         return db
 
     # --- sessions -----------------------------------------------------------
+    # Every call below is a cross-process call to the Windows audio service, and
+    # Windows may log each one: keep them few (a call per session, many times a
+    # second, made the kernel pile up gigabytes of trace records on some PCs).
+    # Known sessions keep their COM objects; only new ones are queried fully.
     def _scan(self):
         ctl2_i, sav_i, meter_i = self._itf
         found = {}
         en = self.mgr.GetSessionEnumerator()
-        for i in range(en.GetCount()):
+        count = en.GetCount()
+        for i in range(count):
             try:
                 ctl = en.GetSession(i).QueryInterface(ctl2_i)
                 state = ctl.GetState()
                 if state == 2:                   # expired
                     continue
+                key = ctl.GetSessionInstanceIdentifier()
+                if key in self._ignored:
+                    continue
+                old = self.sessions.get(key) if key else None
+                if old is not None:
+                    old.ctl, old.playing = ctl, state == 1
+                    found[key] = old
+                    continue
                 pid = ctl.GetProcessId()
                 if pid == self.my_pid:
+                    if key:
+                        self._ignored.add(key)
                     continue
                 name, path = process_info(pid)
-                key = ctl.GetSessionInstanceIdentifier() or f"{name}:{pid}"
+                key = key or f"{name}:{pid}"
                 try:
                     meter = ctl.QueryInterface(meter_i)
                 except Exception:
                     meter = None
                 found[key] = Session(name, ctl.QueryInterface(sav_i), meter, path,
-                                     state == 1)
+                                     state == 1, ctl)
             except Exception:
                 continue
+        self._count = count
         return found
+
+    def _session_count(self):
+        return self.mgr.GetSessionEnumerator().GetCount()
+
+    def _update_states(self):
+        """Which known apps are playing now: one call per app."""
+        for s in self.sessions.values():
+            if s.ctl is not None:
+                try:
+                    s.playing = s.ctl.GetState() == 1
+                except Exception:
+                    pass
 
     def _offset_db(self, name):
         if self.is_excluded(name):
@@ -213,17 +256,22 @@ class WinAudio:
             return -float(self.restore.get("master_raised", 0.0))
         return self.session_db
 
-    def _set_session(self, key, s):
+    def _target(self, s):
         # Windows app volume is scalar^2 (0.5 = -12 dB)
-        self._user_changed(key, s)
         orig = self.restore["apps"].get(s.name, 1.0)
         orig_db = 40.0 * math.log10(max(orig, 1e-4))
         off = self._offset_db(s.name)
         db = max(SESSION_MIN_DB, min(0.0, orig_db + off))
-        v = float(10.0 ** (db / 40.0))
+        return float(10.0 ** (db / 40.0)), off
+
+    def _set_session(self, key, s, checked=False, min_db=0.0):
+        v, off = self._target(s)
         w = self.written.get(key)
-        if w is not None and w[0] == v:
-            return
+        if w is not None and (w[0] == v or abs(
+                40.0 * math.log10(max(w[0], 1e-4) / max(v, 1e-4))) < min_db):
+            return                       # nothing to do: no call at all
+        if not checked and self._user_changed(key, s):
+            v, off = self._target(s)
         try:
             s.sav.SetMasterVolume(v, None)
             self.written[key] = (v, off)
@@ -277,8 +325,11 @@ class WinAudio:
                     pass
             if self.active:
                 if known:
-                    if self._user_changed(key, s):
-                        self._set_session(key, s)
+                    self._user_changed(key, s)
+                    # silent apps catch up only when far behind; they get the
+                    # exact volume as soon as they play (poll)
+                    self._set_session(key, s, checked=True,
+                                      min_db=0.0 if s.playing else IDLE_STEP_DB)
                     continue
                 if s.name not in self.restore["apps"]:
                     try:
@@ -300,18 +351,44 @@ class WinAudio:
             self.dirty = False
             self.save()
 
+    def poll(self, now):
+        """About once a second. A full scan only when the number of sessions
+        changed (an app opened or closed its audio) or every FULL_SCAN_S;
+        otherwise just which apps are playing, and the apps that just started
+        playing get the current volume."""
+        try:
+            full = (now - self._last_full >= FULL_SCAN_S
+                    or self._session_count() != self._count)
+        except Exception:
+            full = True
+        if full:
+            self._last_full = now
+            self.refresh()
+            return
+        self._update_states()
+        if self.active:
+            for key, s in self.sessions.items():
+                if s.playing:
+                    self._set_session(key, s)
+
     def apply_session_db(self, db):
+        """The balancing gain changed: only the apps playing now follow it
+        right away; the silent ones catch up in poll()/refresh()."""
         self.session_db = db
         for key, s in self.sessions.items():
-            if not self.is_excluded(s.name):
+            if s.playing and not self.is_excluded(s.name):
                 self._set_session(key, s)
+
+    def excluded_playing(self):
+        """An excluded app (a call...) is playing: no COM call."""
+        return any(s.playing and self.is_excluded(s.name) for s in self.sessions.values())
 
     def peaks(self):
         """(loudest excluded app peak, its name, loudest balanced app peak).
         Session meters are measured before the app volume (verified)."""
         ex, ex_name, lev = 0.0, "", 0.0
         for s in self.sessions.values():
-            if s.meter is None:
+            if s.meter is None or not s.playing:
                 continue
             try:
                 p = float(s.meter.GetPeakValue())
@@ -355,6 +432,8 @@ class WinAudio:
             found = self._scan()
         except Exception:
             found = self.sessions
+        for key, s in found.items():
+            self._user_changed(key, s)     # moved by the user since the last scan
         done = set()
         for s in found.values():
             if s.name in self.restore["apps"]:
@@ -422,6 +501,17 @@ class RestoreStore:
             save_json(STATE_FILE, data)
 
 
+def should_write(delta_db, since_s):
+    """Write the app volumes now? A bang is cut at once; otherwise at most
+    every WRITE_S and only for a real change (each write is a call to the
+    audio service, and Windows tells every volume listener about it)."""
+    if delta_db <= -CUT_DB:
+        return True
+    if since_s >= WRITE_S and abs(delta_db) >= WRITE_MIN_DB:
+        return True
+    return since_s >= SETTLE_S and abs(delta_db) > 0.05
+
+
 class DeviceWorker(threading.Thread):
     """Capture + balancing of ONE output device (its own thread and COM objects)."""
 
@@ -443,9 +533,18 @@ class DeviceWorker(threading.Thread):
         self.headroom_short = False
         self.active_s = 0.0
         self.peaks = 0
+        self.fails = 0            # failures in a row: wait longer each time
 
     def stop(self):
         self.alive = False
+
+    def _backoff(self):
+        """After an error wait 1, 2, 4... up to 30 s (device off, HDMI screen
+        asleep): never reopen everything in a fast loop."""
+        self.fails += 1
+        end = time.monotonic() + min(30.0, 2.0 ** (self.fails - 1))
+        while self.alive and time.monotonic() < end:
+            time.sleep(0.2)
 
     def run(self):
         ctypes.windll.ole32.CoInitializeEx(None, 0)
@@ -453,7 +552,7 @@ class DeviceWorker(threading.Thread):
             while self.alive:
                 self._run()          # returns only after an unexpected error
                 if self.alive:
-                    time.sleep(2.0)  # then start again instead of dying
+                    self._backoff()  # then start again instead of dying
         finally:
             self.enabled = False
             self.finished.set()
@@ -461,7 +560,7 @@ class DeviceWorker(threading.Thread):
     def _run(self):
         eng = self.engine
         win = rec = rec_ctx = None
-        last_scan = 0.0
+        last_scan = last_write = opened = 0.0
         talk_until = call_until = 0.0
         call_name = ""
         tick = 0
@@ -481,6 +580,7 @@ class DeviceWorker(threading.Thread):
                         self.leveler.reset()
                         self.enabled = False
                         self.error = None
+                        opened = time.monotonic()
                     except Exception as exc:
                         self.error = str(exc)
                         if self.error != last_err:
@@ -488,7 +588,7 @@ class DeviceWorker(threading.Thread):
                             log(f"open {self.device_name}: {type(exc).__name__}: {exc}")
                         self._close(win, rec_ctx)
                         win = rec = rec_ctx = None
-                        time.sleep(1.0)
+                        self._backoff()
                         continue
 
                 while True:
@@ -515,28 +615,35 @@ class DeviceWorker(threading.Thread):
                     log(f"on/off {self.device_name}: {type(exc).__name__}: {exc}")
                     self._close(win, rec_ctx)
                     rec = None
-                    time.sleep(0.5)
+                    self._backoff()
                     continue
 
                 try:
                     data = rec.record(numframes=BLOCK)
-                except Exception:
+                except Exception as exc:
+                    # device gone or reset (0x88890004): reopen, waiting longer
+                    # if it keeps failing
+                    if self.fails == 0:
+                        log(f"capture {self.device_name}: {type(exc).__name__}: {exc}")
                     self._close(win, rec_ctx)
                     rec = None
-                    time.sleep(0.5)
+                    self._backoff()
                     continue
                 data = np.asarray(data, dtype=np.float64)
                 mono = data.mean(axis=1) if data.ndim > 1 else data
 
                 now = time.monotonic()
-                if now - last_scan > 1.0:
+                if self.fails and now - opened > 30.0:
+                    self.fails = 0          # working again
+                if now - last_scan >= POLL_S:
                     last_scan = now
-                    win.refresh()
+                    win.poll(now)
                     self.apps = win.apps()
 
                 # Someone in a call (or another excluded app) is talking:
-                # do not let that voice move the movie's volume.
-                if tick % 2 == 0:
+                # do not let that voice move the movie's volume. Meters are
+                # read only while an excluded app is playing.
+                if tick % PEAKS_EVERY == 0 and win.excluded_playing():
                     ex, ex_name, lev = win.peaks()
                     if ex > TALK_PEAK and ex > TALK_RATIO * lev:
                         talk_until = now + TALK_HOLD_S
@@ -545,7 +652,7 @@ class DeviceWorker(threading.Thread):
                 self.call_app = call_name if now < call_until else ""
 
                 # original signal = captured / (master volume * app volume)
-                if tick % 10 == 0:
+                if tick % MASTER_EVERY == 0:
                     try:
                         master = win.master_db() if win.post_volume else 0.0
                     except Exception:
@@ -558,7 +665,8 @@ class DeviceWorker(threading.Thread):
 
                 if self.enabled:
                     target = gain - HEADROOM
-                    if abs(target - win.session_db) > 0.1:
+                    if should_write(target - win.session_db, now - last_write):
+                        last_write = now
                         win.apply_session_db(target)
                     self.headroom_short = (
                         float(win.restore.get("master_raised", 0.0)) < HEADROOM - 0.5)
@@ -628,6 +736,7 @@ class Engine(threading.Thread):
         self.apps_wanted = 0.0       # set by the settings window: scan other apps now
         self._dev_sig = None
         self._last_full = 0.0
+        self._enum = None
 
     # ---- thread-safe API ----------------------------------------------------
     def set_enabled(self, on):
@@ -773,7 +882,9 @@ class Engine(threading.Thread):
         """Ids of the active outputs + default id: a few cheap COM calls."""
         from pycaw.constants import DEVICE_STATE, EDataFlow
         from pycaw.pycaw import AudioUtilities
-        en = AudioUtilities.GetDeviceEnumerator()
+        if self._enum is None:          # created once, not every 2 s
+            self._enum = AudioUtilities.GetDeviceEnumerator()
+        en = self._enum
         col = en.EnumAudioEndpoints(EDataFlow.eRender.value, DEVICE_STATE.ACTIVE.value)
         ids = tuple(sorted(col.Item(i).GetId() for i in range(col.GetCount())))
         try:
@@ -793,7 +904,10 @@ class Engine(threading.Thread):
             except Exception:
                 ff = 0
             found.append((d.id, d.FriendlyName or "?", ff))
-        default = AudioUtilities.GetSpeakers()
+        try:
+            default = AudioUtilities.GetSpeakers()
+        except Exception:
+            default = None          # no default output right now (screen off...)
         self.default_id = default.id if default is not None else None
         self.default_name = next((n for i, n, _f in found if i == self.default_id), "")
         self.devices = tuple(found)
@@ -865,7 +979,7 @@ class Engine(threading.Thread):
                                 self.workers[dev_id] = w
                                 w.start()
                         self._recover_idle(targets, recovered)
-                        if now - self._last_apps > 5.0 and now - self.apps_wanted < 10.0:
+                        if now - self._last_apps > 10.0 and now - self.apps_wanted < 10.0:
                             self._last_apps = now
                             self._scan_other_apps()
                     except Exception as exc:
@@ -876,6 +990,7 @@ class Engine(threading.Thread):
                         msg = f"{type(exc).__name__}: {exc}"
                         fails += 1
                         self._dev_sig = None
+                        self._enum = None
                         if fails == 1 or fails % 30 == 0:
                             log(f"devices ({fails}x): {msg}")
                         if fails >= 5:

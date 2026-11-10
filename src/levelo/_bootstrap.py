@@ -5,8 +5,15 @@ single-threaded apartment. Import this module before anything audio related.
 """
 
 import ctypes
+import os
 import sys
 import warnings
+
+# numpy's math library starts one thread per CPU core and reserves memory for
+# each (~500 MB on a 16-thread CPU). Levelo only works on tiny blocks: one is
+# plenty. Must be set before numpy is imported (soundcard imports it).
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
 
 sys.coinit_flags = 0  # STA
 
