@@ -14,7 +14,7 @@ import sv_ttk
 from . import APP_NAME, APP_ID, BETA, __version__
 from . import DONATE_URL as DEFAULT_DONATE_URL
 from . import REPO_URL as DEFAULT_WEBSITE
-from . import i18n, winsys
+from . import cardstyle, i18n, winsys
 from .dsp import DEFAULT_PRESET, PRESETS
 from .engine import CALL_APPS, Engine
 from .settings_ui import (SettingsWindow, prewarm_apps, remember_apps,
@@ -22,7 +22,7 @@ from .settings_ui import (SettingsWindow, prewarm_apps, remember_apps,
 from .i18n import t
 from .icons import app_icon, make_icon, png_b64
 from .online import OnlineChecker, is_newer
-from .storage import SETTINGS_FILE, load_json, save_json
+from .storage import SETTINGS_FILE, load_json, log, save_json
 
 PRESET_ORDER = ("light", "normal", "night")
 
@@ -171,7 +171,14 @@ class App:
         st = ttk.Style()
         st.configure("Panel.TFrame", background=self.pal["bg"])
         st.configure("ALCard.TFrame", background=self.pal["card"])
-        for name in ("Card.TRadiobutton", "Card.Switch.TCheckbutton"):
+        # controls on a card without the theme-coloured square around them
+        for colour, prefix in ((self.pal["card"], "Card"), (self.pal["bg"], "Plain")):
+            try:
+                cardstyle.install(self.root, colour, prefix)
+            except Exception as e:
+                log(f"{prefix} styles: {e!r}")
+                cardstyle.fallback(self.root, prefix)
+        for name in cardstyle.STYLES:
             st.configure(name, background=self.pal["card"])
             st.map(name, background=[("active", self.pal["card"])])
         self.icon_photo = tk.PhotoImage(data=png_b64(app_icon(64)))
@@ -219,7 +226,7 @@ class App:
         self.status_sub = self._label(tt, "", "sub")
         self.status_sub.pack(anchor="w")
         self.enabled_var = tk.BooleanVar(value=self.settings["enabled"])
-        ttk.Checkbutton(head, style="Switch.TCheckbutton", variable=self.enabled_var,
+        ttk.Checkbutton(head, style="Plain.Switch.TCheckbutton", variable=self.enabled_var,
                         command=lambda: self.set_enabled(self.enabled_var.get())
                         ).pack(side="right")
         self._icon_button(head, ICON_SETTINGS, t("settings"),
@@ -272,7 +279,7 @@ class App:
         self.preset_var = tk.StringVar(value=self.settings["preset"])
         for i, key in enumerate(PRESET_ORDER):
             ttk.Radiobutton(seg, text=preset_label(key), value=key, variable=self.preset_var,
-                            style="Toggle.TButton",
+                            style="Plain.Toggle.TButton",
                             command=lambda: self.set_preset(self.preset_var.get())
                             ).grid(row=0, column=i, sticky="ew",
                                    padx=(0 if i == 0 else px(4), 0))
@@ -298,9 +305,9 @@ class App:
         self.ask_btns.pack(fill="x")
         row = ttk.Frame(self.ask_btns, style="ALCard.TFrame")
         row.pack(fill="x")
-        ttk.Button(row, text=t("ask_yes"), style="Accent.TButton",
+        ttk.Button(row, text=t("ask_yes"), style="Card.Accent.TButton",
                    command=self.donate).pack(side="left")
-        ttk.Button(row, text=t("ask_later"),
+        ttk.Button(row, text=t("ask_later"), style="Card.TButton",
                    command=self.ask_later).pack(side="left", padx=(px(6), 0))
         done = self._label(self.ask_btns, t("ask_done"), "cardsub", cursor="hand2")
         done.config(font=(self.F["small"][0], self.F["small"][1], "underline"))
@@ -314,12 +321,15 @@ class App:
         foot.pack(fill="x")
         self.auto_var = tk.BooleanVar(value=winsys.autostart_enabled())
         ttk.Checkbutton(foot, text=t("autostart"), variable=self.auto_var,
+                        style="Plain.TCheckbutton",
                         command=lambda: self.set_autostart(self.auto_var.get())
                         ).pack(side="left")
-        ttk.Button(foot, text=t("quit"), command=self.quit).pack(side="right")
+        ttk.Button(foot, text=t("quit"), style="Plain.TButton",
+                   command=self.quit).pack(side="right")
         self.donate_btn = None
         if self.donate_url and not self._is_donor():
-            self.donate_btn = ttk.Button(foot, text=t("donate_short"), command=self.donate)
+            self.donate_btn = ttk.Button(foot, text=t("donate_short"), style="Plain.TButton",
+                                         command=self.donate)
             self.donate_btn.pack(side="right", padx=(0, px(6)))
         bottom = ttk.Frame(main, style="Panel.TFrame")
         bottom.pack(fill="x", pady=(px(10), 0))

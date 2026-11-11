@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.7 (beta)
+
+- **Settings: switches and buttons look right.** The theme draws every control on top
+  of the window colour, so on the lighter cards each switch, button, option and the
+  language box had a dark square (light theme: a grey one) around it. They are now
+  drawn on the card colour, in both dark and light theme.
+- No more focus frame staying around a switch or a button after clicking it (in
+  Settings and in the panel), as in Windows 11, where it shows only with the keyboard.
+
 ## 0.9.6 (beta)
 
 - **Important fix — please update.** On some PCs Windows keeps a trace record in kernel

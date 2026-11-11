@@ -418,7 +418,7 @@ class SettingsWindow:
         seg.pack(side="right")
         for i, key in enumerate(PRESET_ORDER):
             ttk.Radiobutton(seg, text=t(f"preset_{key}"), value=key, variable=preset,
-                            style="Toggle.TButton", command=pick
+                            style="Card.Toggle.TButton", command=pick
                             ).grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else px(4), 0))
             seg.columnconfigure(i, uniform="seg")
 
@@ -428,7 +428,8 @@ class SettingsWindow:
         c = self.card(G["language"], t("gen_language"), t("gen_language_desc"))
         names, codes = list(i18n.LANGUAGES.values()), list(i18n.LANGUAGES)
         lang = tk.StringVar(value=i18n.LANGUAGES.get(i18n.current(), names[0]))
-        cb = ttk.Combobox(c.right, textvariable=lang, values=names, state="readonly", width=16)
+        cb = ttk.Combobox(c.right, textvariable=lang, values=names, state="readonly", width=16,
+                          style="Card.TCombobox")
         cb.pack(side="right")
         cb.bind("<<ComboboxSelected>>", lambda e: (
             cb.selection_clear(), app.set_language(codes[names.index(lang.get())])))
@@ -789,7 +790,7 @@ class SettingsWindow:
             if app.update:
                 c = self.card(G["update"], t("about_update", v=app.update[0]),
                               t("about_update_desc"), parent=box)
-                ttk.Button(c.right, text=t("about_download"), style="Accent.TButton",
+                ttk.Button(c.right, text=t("about_download"), style="Card.Accent.TButton",
                            command=lambda: winsys.open_url(app.update[1])).pack(side="right")
             else:
                 self.card(G["update"], t("about_latest"), t("about_latest_desc"), parent=box)
