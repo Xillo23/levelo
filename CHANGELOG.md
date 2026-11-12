@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.8 (beta)
+
+- **Fix: the panel and Settings no longer stop opening.** If one action of the window
+  ran into an error, the loop that handles tray clicks stopped for good: the icon stayed
+  in the notification area but clicking it, or "Settings" in its menu, did nothing until
+  Levelo was restarted. Errors now only skip that one action and the loop keeps going.
+- Errors of the window are written to `levelo.log` (in `%APPDATA%\Levelo`); if the
+  window ever stops answering, Levelo writes where it got stuck there too. Please attach
+  that file to bug reports.
+
 ## 0.9.7 (beta)
 
 - **Settings: switches and buttons look right.** The theme draws every control on top

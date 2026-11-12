@@ -1,10 +1,12 @@
 """Windows 11 style flyout panel + notification-area (tray) icon."""
 
 import ctypes
+import faulthandler
 import queue
 import threading
 import time
 import tkinter as tk
+import traceback
 from tkinter import font as tkfont
 from tkinter import ttk
 
@@ -22,7 +24,7 @@ from .settings_ui import (SettingsWindow, prewarm_apps, remember_apps,
 from .i18n import t
 from .icons import app_icon, make_icon, png_b64
 from .online import OnlineChecker, is_newer
-from .storage import SETTINGS_FILE, load_json, log, save_json
+from .storage import LOG_FILE, SETTINGS_FILE, load_json, log, save_json
 
 PRESET_ORDER = ("light", "normal", "night")
 
@@ -95,6 +97,10 @@ class App:
 
         self.root = tk.Tk()
         self.root.withdraw()
+        # an error in a Tk callback goes to levelo.log (there is no console)
+        self.root.report_callback_exception = (
+            lambda *exc: log("ui callback: " + "".join(traceback.format_exception(*exc))))
+        self._tick = time.monotonic()
         self.root.title(APP_NAME)
         self.ui_q = queue.Queue()
         self.shown = False
@@ -112,6 +118,7 @@ class App:
                          daemon=True).start()
         self.root.protocol("WM_SAVE_YOURSELF", lambda: self.engine.shutdown(2.0))
         self.root.after(50, self._loop)
+        threading.Thread(target=self._watchdog, daemon=True, name="Watchdog").start()
 
         # read app names/icons of the audio history in the background, so the
         # Apps page opens instantly later
@@ -422,7 +429,7 @@ class App:
             top.lift()
             top.focus_force()
             return
-        self.refresh()
+        self._safe(self.refresh)
         top.update_idletasks()
         h = top.winfo_reqheight()
         self._anchor = winsys.panel_anchor()
@@ -723,13 +730,37 @@ class App:
 
     # --------------------------------------------------------------- live view
     def _loop(self):
+        # Never let one error stop this loop: it runs every queued action (tray
+        # clicks, show panel, settings...). If it stopped, the tray icon would stay
+        # but no click would do anything any more.
+        self._tick = time.monotonic()
         try:
-            while True:
-                self.ui_q.get_nowait()()
-        except queue.Empty:
-            pass
-        if time.monotonic() - self._last_seen > 3.0:
-            self._last_seen = time.monotonic()
+            for _ in range(100):
+                try:
+                    fn = self.ui_q.get_nowait()
+                except queue.Empty:
+                    break
+                self._safe(fn)
+            self._safe(self._periodic)
+        finally:
+            self.root.after(50, self._loop)
+
+    def _safe(self, fn):
+        try:
+            fn()
+        except Exception:
+            tb = traceback.format_exc()
+            now = time.monotonic()
+            last = getattr(self, "_logged", {})
+            if now - last.get(tb, -1e9) > 60.0:      # the same error at most once a minute
+                last[tb] = now
+                self._logged = last
+                log("ui: " + tb)
+
+    def _periodic(self):
+        now = time.monotonic()
+        if now - self._last_seen > 3.0:
+            self._last_seen = now
             if remember_apps(self.settings, self.engine.apps, self.engine.other_apps):
                 self._save()
         if (not self.settings["headroom_tip"] and self.settings["enabled"]
@@ -740,15 +771,32 @@ class App:
                 self.tray.notify(t("warn_headroom"), APP_NAME)
             except Exception:
                 pass
-        if time.monotonic() - self._last_theme > 3.0:
-            self._last_theme = time.monotonic()
-            self._follow_theme()
-        if time.monotonic() - self._last_flush > 30.0:
-            self._last_flush = time.monotonic()
-            self._flush_stats()
+        if now - self._last_theme > 3.0:
+            self._last_theme = now
+            self._safe(self._follow_theme)
+        if now - self._last_flush > 30.0:
+            self._last_flush = now
+            self._safe(self._flush_stats)
         if self.shown:
             self.refresh()
-        self.root.after(50, self._loop)
+
+    def _watchdog(self):
+        """If the window loop stops answering, write where it is stuck to levelo.log."""
+        reported = False
+        while True:
+            time.sleep(5.0)
+            stuck = time.monotonic() - self._tick
+            if stuck > 20.0 and not reported:
+                reported = True
+                log(f"ui stuck for {stuck:.0f} s, threads:")
+                try:
+                    with open(LOG_FILE, "a", encoding="utf-8") as f:
+                        faulthandler.dump_traceback(file=f, all_threads=True)
+                except Exception:
+                    pass
+            elif stuck < 2.0 and reported:
+                reported = False
+                log("ui running again")
 
     def refresh(self):
         eng, s = self.engine, self.settings
