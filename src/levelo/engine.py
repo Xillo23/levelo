@@ -17,7 +17,7 @@ from collections import deque
 import numpy as np
 import soundcard as sc
 
-from .dsp import BLOCK, BLOCK_S, HEADROOM, SR, Leveler, db_to_lin
+from .dsp import BLOCK, BLOCK_S, HEADROOM, HEADROOM_MIN, SR, Leveler, db_to_lin
 from .storage import STATE_FILE, load_json, log, save_json
 
 SESSION_MIN_DB = -60.0
@@ -124,6 +124,32 @@ class Session:
         self.path, self.playing, self.ctl = path, playing, ctl
 
 
+_NOTIFY_CLASS = None
+
+
+def _session_notifier(event):
+    """COM callback object: Windows calls OnSessionCreated as soon as an app
+    opens an audio stream on the device. It only sets `event` (it runs on a
+    Windows thread); the worker then scans and lowers the new app within
+    ~10 ms instead of up to 1 s, so a new app never plays at the raised
+    master volume."""
+    global _NOTIFY_CLASS
+    if _NOTIFY_CLASS is None:
+        from comtypes import COMObject
+        from pycaw.api.audiopolicy import IAudioSessionNotification
+
+        class SessionNotifier(COMObject):
+            _com_interfaces_ = (IAudioSessionNotification,)
+
+            def OnSessionCreated(self, new_session):
+                self.event.set()
+                return 0
+        _NOTIFY_CLASS = SessionNotifier
+    obj = _NOTIFY_CLASS()
+    obj.event = event
+    return obj
+
+
 class WinAudio:
     """Master (endpoint) volume + per-app session volumes of ONE output device."""
 
@@ -162,6 +188,34 @@ class WinAudio:
 
     def save(self):
         self.store.save(self.dev_id, self.restore)
+
+    # --- new apps: told by Windows at once --------------------------------
+    def watch_sessions(self):
+        self.new_session = threading.Event()
+        self._notifier = None
+        try:
+            n = _session_notifier(self.new_session)
+            self.mgr.RegisterSessionNotification(n)
+            self.mgr.GetSessionEnumerator()     # needed to start the notifications
+            self._notifier = n
+        except Exception as exc:
+            log(f"session notifications unavailable: {type(exc).__name__}: {exc}")
+
+    def unwatch_sessions(self):
+        n = getattr(self, "_notifier", None)
+        self._notifier = None
+        if n is not None:
+            try:
+                self.mgr.UnregisterSessionNotification(n)
+            except Exception:
+                pass
+
+    def take_new_session(self):
+        ev = getattr(self, "new_session", None)
+        if ev is not None and ev.is_set():
+            ev.clear()
+            return True
+        return False
 
     # --- which apps are balanced --------------------------------------------
     def is_excluded(self, name):
@@ -371,6 +425,11 @@ class WinAudio:
                 if s.playing:
                     self._set_session(key, s)
 
+    @property
+    def raised(self):
+        """dB the master was raised = how much the voices can be raised."""
+        return float(self.restore.get("master_raised", 0.0))
+
     def apply_session_db(self, db):
         """The balancing gain changed: only the apps playing now follow it
         right away; the silent ones catch up in poll()/refresh()."""
@@ -414,7 +473,7 @@ class WinAudio:
         self.written = {}
         self.save()
         # lower the apps first, then raise master: never a spike in between
-        self.session_db = -HEADROOM
+        self.session_db = -raise_db
         self.refresh()
         if raise_db > 0:
             self.set_master_db(cur + raise_db)
@@ -562,6 +621,7 @@ class DeviceWorker(threading.Thread):
         win = rec = rec_ctx = None
         last_scan = last_write = opened = 0.0
         talk_until = call_until = 0.0
+        rechecks = []
         call_name = ""
         tick = 0
         master = 0.0
@@ -573,6 +633,7 @@ class DeviceWorker(threading.Thread):
                         win = WinAudio(eng.store, self.dev_id)
                         win.set_rules(eng.call_protect, eng.app_rules)
                         win.recover()
+                        win.watch_sessions()
                         mic = sc.get_microphone(id=self.dev_id, include_loopback=True)
                         rec_ctx = mic.recorder(samplerate=SR, blocksize=BLOCK)
                         rec = rec_ctx.__enter__()
@@ -630,11 +691,21 @@ class DeviceWorker(threading.Thread):
                     self._backoff()
                     continue
                 data = np.asarray(data, dtype=np.float64)
-                mono = data.mean(axis=1) if data.ndim > 1 else data
 
                 now = time.monotonic()
                 if self.fails and now - opened > 30.0:
                     self.fails = 0          # working again
+                if win.take_new_session():
+                    # an app just opened its audio: lower it now, and look
+                    # again shortly (the new session may not be listed yet)
+                    rechecks = [now + 0.05, now + 0.2, now + 0.5]
+                    win.refresh()
+                    win._last_full = now
+                    self.apps = win.apps()
+                elif rechecks and now >= rechecks[0]:
+                    del rechecks[0]
+                    win.refresh()
+                    self.apps = win.apps()
                 if now - last_scan >= POLL_S:
                     last_scan = now
                     win.poll(now)
@@ -658,18 +729,20 @@ class DeviceWorker(threading.Thread):
                     except Exception:
                         master = 0.0
                 comp_db = -(master + win.session_db)
-                orig = mono * db_to_lin(min(comp_db, 90.0))
+                orig = data * db_to_lin(min(comp_db, 90.0))
 
-                gain = self.leveler.process(orig, boost_cap=HEADROOM,
+                # gain 0 = as loud as without Levelo; it can go up only by
+                # what the master was raised (0 if Windows was already at 100%)
+                raised = win.raised if self.enabled else HEADROOM
+                gain = self.leveler.process(orig, boost_cap=raised,
                                             freeze=now < talk_until)
 
                 if self.enabled:
-                    target = gain - HEADROOM
+                    target = gain - raised
                     if should_write(target - win.session_db, now - last_write):
                         last_write = now
                         win.apply_session_db(target)
-                    self.headroom_short = (
-                        float(win.restore.get("master_raised", 0.0)) < HEADROOM - 0.5)
+                    self.headroom_short = raised < HEADROOM_MIN
 
                 self.gain = gain if self.enabled else 0.0
                 new_state = self.leveler.state
@@ -690,6 +763,8 @@ class DeviceWorker(threading.Thread):
             self._close(win, rec_ctx)
 
     def _close(self, win, rec_ctx):
+        if win is not None:
+            win.unwatch_sessions()
         if win is not None and win.active:
             try:
                 win.deactivate()

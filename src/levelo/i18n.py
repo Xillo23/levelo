@@ -49,8 +49,7 @@ STRINGS = {
         "desc_light": "Gentle: the movie keeps its dynamics.",
         "desc_normal": "Clear voices, tamed explosions. Recommended.",
         "desc_night": "Everything at almost the same level, for low volume.",
-        "warn_headroom": "Windows volume was almost at maximum, so the audio is now a bit "
-                         "quieter. Turn up your speakers/TV/monitor.",
+        "warn_headroom": "Windows volume is almost at maximum: loud scenes are still lowered, but quiet voices can only be raised a little. For the best result set Windows to about 50% and turn up your speakers/TV/monitor.",
         "autostart": "Start with Windows",
         "quit": "Quit",
         "footer": "Set the volume with Windows as usual:\nthe balancing is on me.",
@@ -91,8 +90,7 @@ STRINGS = {
         "desc_light": "Corregge poco: il film mantiene la sua dinamica.",
         "desc_normal": "Voci chiare, esplosioni contenute. Consigliato.",
         "desc_night": "Tutto quasi allo stesso livello, per il volume basso.",
-        "warn_headroom": "Il volume di Windows era quasi al massimo, quindi l'audio ora è "
-                         "un po' più basso. Alza il volume di casse/TV/monitor.",
+        "warn_headroom": "Il volume di Windows è quasi al massimo: le scene forti vengono abbassate, ma le voci basse si possono alzare solo di poco. Per il risultato migliore metti Windows a circa 50% e alza il volume di casse/TV/monitor.",
         "autostart": "Avvia con Windows",
         "quit": "Esci",
         "footer": "Regola il volume con Windows come sempre:\nal bilanciamento penso io.",
@@ -133,8 +131,7 @@ STRINGS = {
         "desc_light": "Corrige poco: la película conserva su dinámica.",
         "desc_normal": "Voces claras, explosiones contenidas. Recomendado.",
         "desc_night": "Todo casi al mismo nivel, para volumen bajo.",
-        "warn_headroom": "El volumen de Windows estaba casi al máximo, así que ahora el "
-                         "audio suena algo más bajo. Sube el volumen de altavoces/TV/monitor.",
+        "warn_headroom": "El volumen de Windows está casi al máximo: las escenas fuertes se siguen bajando, pero las voces bajas solo se pueden subir un poco. Para el mejor resultado pon Windows a un 50% y sube los altavoces/TV/monitor.",
         "autostart": "Iniciar con Windows",
         "quit": "Salir",
         "footer": "Ajusta el volumen con Windows como siempre:\nyo me encargo del equilibrio.",
@@ -175,8 +172,7 @@ STRINGS = {
         "desc_light": "Sanft: der Film behält seine Dynamik.",
         "desc_normal": "Klare Stimmen, gezähmte Explosionen. Empfohlen.",
         "desc_night": "Alles fast gleich laut, für niedrige Lautstärke.",
-        "warn_headroom": "Die Windows-Lautstärke war fast auf Maximum, daher ist der Ton "
-                         "jetzt etwas leiser. Drehe Lautsprecher/TV/Monitor lauter.",
+        "warn_headroom": "Die Windows-Lautstärke ist fast auf Maximum: Laute Szenen werden weiter abgesenkt, leise Stimmen können aber nur wenig angehoben werden. Am besten Windows auf etwa 50% stellen und Lautsprecher/TV/Monitor lauter drehen.",
         "autostart": "Mit Windows starten",
         "quit": "Beenden",
         "footer": "Lautstärke wie gewohnt mit Windows regeln:\nden Ausgleich übernehme ich.",
@@ -217,8 +213,7 @@ STRINGS = {
         "desc_light": "Corrige peu : le film garde sa dynamique.",
         "desc_normal": "Voix claires, explosions maîtrisées. Recommandé.",
         "desc_night": "Tout presque au même niveau, pour écouter bas.",
-        "warn_headroom": "Le volume de Windows était presque au maximum, le son est donc "
-                         "un peu plus bas. Montez le volume des enceintes/TV/écran.",
+        "warn_headroom": "Le volume de Windows est presque au maximum : les scènes fortes sont toujours baissées, mais les voix faibles ne peuvent être montées que légèrement. Pour un meilleur résultat, mettez Windows à environ 50% et montez les enceintes/TV/écran.",
         "autostart": "Lancer avec Windows",
         "quit": "Quitter",
         "footer": "Réglez le volume avec Windows comme d'habitude :\nje m'occupe de l'équilibre.",
@@ -259,8 +254,7 @@ STRINGS = {
         "desc_light": "Corrige pouco: o filme mantém sua dinâmica.",
         "desc_normal": "Vozes claras, explosões contidas. Recomendado.",
         "desc_night": "Tudo quase no mesmo nível, para volume baixo.",
-        "warn_headroom": "O volume do Windows estava quase no máximo, então o áudio agora "
-                         "está um pouco mais baixo. Aumente as caixas/TV/monitor.",
+        "warn_headroom": "O volume do Windows está quase no máximo: as cenas altas continuam a ser baixadas, mas as vozes baixas só podem ser aumentadas um pouco. Para o melhor resultado, deixe o Windows em cerca de 50% e aumente as caixas/TV/monitor.",
         "autostart": "Iniciar com o Windows",
         "quit": "Sair",
         "footer": "Ajuste o volume pelo Windows como sempre:\neu cuido do equilíbrio.",
@@ -301,8 +295,7 @@ STRINGS = {
         "desc_light": "Мягко: фильм сохраняет динамику.",
         "desc_normal": "Чёткие голоса, сдержанные взрывы. Рекомендуется.",
         "desc_night": "Всё почти одной громкости, для тихого просмотра.",
-        "warn_headroom": "Громкость Windows была почти на максимуме, поэтому звук стал "
-                         "немного тише. Прибавьте громкость колонок/ТВ/монитора.",
+        "warn_headroom": "Громкость Windows почти на максимуме: громкие сцены по-прежнему приглушаются, но тихие голоса можно поднять лишь немного. Для лучшего результата поставьте Windows примерно на 50% и прибавьте колонки/ТВ/монитор.",
         "autostart": "Запускать с Windows",
         "quit": "Выход",
         "footer": "Регулируйте громкость в Windows как обычно:\nбаланс — моя забота.",
@@ -343,8 +336,7 @@ STRINGS = {
         "desc_light": "Delikatnie: film zachowuje dynamikę.",
         "desc_normal": "Wyraźne głosy, okiełznane wybuchy. Zalecane.",
         "desc_night": "Wszystko prawie równo głośne, do cichego oglądania.",
-        "warn_headroom": "Głośność Windows była prawie na maksimum, więc dźwięk jest teraz "
-                         "trochę cichszy. Pogłośnij głośniki/TV/monitor.",
+        "warn_headroom": "Głośność Windows jest prawie na maksimum: głośne sceny są nadal ściszane, ale ciche głosy można podgłośnić tylko trochę. Najlepiej ustaw Windows na około 50% i pogłośnij głośniki/TV/monitor.",
         "autostart": "Uruchamiaj z Windows",
         "quit": "Zakończ",
         "footer": "Ustawiaj głośność w Windows jak zwykle:\nwyrównaniem zajmę się ja.",
@@ -385,8 +377,7 @@ STRINGS = {
         "desc_light": "Az düzeltir: film dinamiğini korur.",
         "desc_normal": "Net sesler, kontrollü patlamalar. Önerilen.",
         "desc_night": "Her şey neredeyse aynı seviyede, düşük ses için.",
-        "warn_headroom": "Windows sesi neredeyse en yüksekteydi, bu yüzden ses şimdi biraz "
-                         "daha kısık. Hoparlör/TV/monitör sesini açın.",
+        "warn_headroom": "Windows sesi neredeyse en yüksekte: yüksek sahneler yine kısılır, ancak alçak sesler yalnızca biraz yükseltilebilir. En iyi sonuç için Windows'u yaklaşık %50'ye ayarlayın ve hoparlör/TV/monitör sesini açın.",
         "autostart": "Windows ile başlat",
         "quit": "Çıkış",
         "footer": "Sesi her zamanki gibi Windows'tan ayarlayın:\ndengeyi ben hallederim.",
@@ -427,8 +418,7 @@ STRINGS = {
         "desc_light": "轻微调整：保留电影的动态。",
         "desc_normal": "人声清晰，爆炸声受控。推荐。",
         "desc_night": "所有声音几乎一样大，适合低音量观看。",
-        "warn_headroom": "Windows 音量几乎已到最大，因此现在声音会稍小一些。"
-                         "请调高音箱/电视/显示器的音量。",
+        "warn_headroom": "Windows 音量几乎已到最大：响亮的场景仍会被降低，但轻声对白只能稍微提高。为获得最佳效果，请将 Windows 音量设为约 50%，并调高音箱/电视/显示器的音量。",
         "autostart": "开机自动启动",
         "quit": "退出",
         "footer": "像平常一样用 Windows 调节音量：\n平衡交给我。",
@@ -468,8 +458,7 @@ STRINGS = {
         "desc_light": "控えめ：映画のダイナミクスを保ちます。",
         "desc_normal": "セリフははっきり、爆発音は控えめに。おすすめ。",
         "desc_night": "すべてをほぼ同じ音量に。小音量向け。",
-        "warn_headroom": "Windows の音量がほぼ最大だったため、音が少し小さくなっています。"
-                         "スピーカー/テレビ/モニターの音量を上げてください。",
+        "warn_headroom": "Windows の音量がほぼ最大です。大きな場面は引き続き下げられますが、小さな声は少ししか上げられません。最良の結果を得るには、Windows を約 50% にして、スピーカー/テレビ/モニターの音量を上げてください。",
         "autostart": "Windows 起動時に開始",
         "quit": "終了",
         "footer": "音量はいつも通り Windows で調整してください。\nバランスはおまかせください。",

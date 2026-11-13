@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.10.0 (beta)
+
+**A new leveling engine, built and measured on real film soundtracks.**
+
+- **Dialogue first.** Levelo now finds the voices (in films they sit in the centre of
+  the mix, or in the centre channel of 5.1/7.1) with a small speech detector, and levels
+  *the voices*: every line at the same comfortable level. Before, it levelled the
+  overall loudness, so a scene with loud music and quiet speech was judged "loud" and
+  the voices got even quieter.
+- **Action never much louder than the voices.** Music, action and explosions are kept
+  within a few dB of the dialogue (*Light* 7, *Normal* 4, *Night* 2 dB), relative to
+  where the voices really end up. On a blockbuster-like test mix the action went from
+  14.4 dB louder than the dialogue to 5.7 dB (*Normal*, was 7.9 with 0.9.8) and 4.4 dB
+  (*Night*).
+- **The same result with any source.** A quiet movie, a loud YouTube video, a streaming
+  service that plays everything low, or the player volume at 30%: the voices end up at
+  the same level (within 0.2 dB from +8 to -12 dB of source level in the test; 0.9.8
+  differed by 4.4 dB). Also the silence threshold now follows the film, so very quiet
+  sources are not mistaken for silence.
+- **More room to raise quiet voices**: the Windows volume is raised by up to 15 dB
+  (was 10) while the apps are lowered by the same amount, so nothing changes in
+  loudness, but whispered scenes can be lifted further.
+- **Windows volume at 100% no longer makes everything quieter.** Before, turning
+  Levelo on with the volume at maximum lowered all audio by 10 dB. Now the voices keep
+  their level and only the loud parts are lowered; the panel suggests turning Windows
+  down a little for the full effect.
+- **New apps are lowered at once.** Windows now tells Levelo the moment an app opens
+  its audio: it is lowered in 30-60 ms instead of playing up to 1 s at the raised volume
+  (measured).
+- No more slight wobble of the volume on loud syllables; after an explosion the volume
+  comes back as quickly with quiet and loud sources.
+- 5.1 and 7.1 outputs: the centre channel is used to find the dialogue.
+- `tools/film_bench.py`: reproducible benchmark on the open movie *Tears of Steel*
+  (downloads the soundtrack and prints the numbers above).
+
 ## 0.9.8 (beta)
 
 - **Fix: the panel and Settings no longer stop opening.** If one action of the window

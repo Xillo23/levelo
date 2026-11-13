@@ -27,8 +27,12 @@ You know the routine: you turn the volume up to understand the dialogue, then th
 next action scene blows your ears off. **Levelo** fixes that. It sits in the
 notification area and keeps everything at a comfortable level in real time:
 
-- 💥 **Loud parts are lowered in ~10–30 ms**: explosions, gunshots, sudden music.
-- 🗣️ **Quiet parts are raised smoothly**: whispers and soft dialogue become intelligible.
+- 🗣️ **Dialogue first**: Levelo finds the voices (the centre of the mix, or the centre
+  channel of 5.1/7.1) and keeps *every line* at the same comfortable level.
+- 💥 **Action never much louder than the voices**: music, explosions and gunshots are
+  kept within a few dB of the dialogue, and sudden hits are cut in ~10–30 ms.
+- 📺 **Same result with any source**: a quiet movie, a loud YouTube video, a streaming
+  service that plays low, the player at 30%: the voices end up at the same level.
 - 🎚️ **You keep using the normal Windows volume** (keys, taskbar, speakers). There's no extra slider.
 - 🌙 **Three intensities**: *Light*, *Normal* and *Night* (everything at almost the same level, great for late-night watching).
 - 🎧 **Voice calls are left alone**: watching with friends on Discord, Teams, Zoom or WhatsApp? Their voices keep their volume and don't make the movie quieter.
@@ -39,6 +43,18 @@ notification area and keeps everything at a comfortable level in real time:
 
 Works with any app that plays sound: browsers (Netflix, YouTube, Prime Video…), VLC,
 MPC-HC, Plex, games, and more.
+
+### Measured on a real film
+
+On a blockbuster-like mix of the open movie *Tears of Steel* (calm dialogue, battle
+scenes with voices under loud music; reproduce it with `python tools/film_bench.py`):
+
+| | Action louder than the dialogue by | Dialogue level, source from +8 to −12 dB |
+|---|---|---|
+| Without Levelo | 14.4 dB | changes by 20 dB |
+| Levelo 0.9.8 | 7.9 dB | changes by 4.4 dB |
+| **Levelo 0.10 — Normal** | **5.7 dB** | **changes by 0.2 dB** |
+| **Levelo 0.10 — Night** | **4.4 dB** | **changes by 0.2 dB** |
 
 <div align="center">
 <img src="docs/settings.png" width="720" alt="Levelo settings">
@@ -71,31 +87,41 @@ Right-click the icon for the menu: intensity, settings, language, start with Win
 **Voice calls:** Discord, Teams, Zoom, WhatsApp, Telegram and similar apps are left alone
 by default: your friend's voice keeps its volume and doesn't make the movie quieter.
 
-> **Tip:** to raise quiet voices, Levelo needs a bit of room. If your Windows
-> volume is at 100%, turn it down a little and turn up your speakers/TV/monitor instead.
-> The panel tells you when this happens.
+> **Tip:** to raise quiet voices, Levelo needs a bit of room. If your Windows volume is
+> at 100%, loud scenes are still lowered but quiet voices can only be raised a little:
+> set Windows to about 50% and turn up your speakers/TV/monitor instead. Levelo tells you
+> once when this happens.
 
 ## How it works
 
 1. **Listens** to the PC's audio output (WASAPI loopback) in 10 ms blocks.
-2. **Measures perceived loudness** with K-weighting (the ITU-R BS.1770 broadcast standard),
-   ignoring pauses between words so it doesn't pump up background noise.
-3. **Computes a correction** toward a reference level. It cuts fast when sound gets loud,
-   recovers in about 1 s after a loud scene, and raises quiet parts slowly. It never boosts
-   silence.
-4. **Applies it to the per-app volumes** (the Windows volume mixer), not to the master
-   volume, so your volume slider stays yours. To be able to *raise* audio it keeps apps
-   10 dB lower and raises the master by the same amount, so overall loudness doesn't change.
-5. **Restores everything** when you pause, quit, uninstall, switch audio device, or even
+2. **Finds the voices.** In films the dialogue is in the centre of the stereo mix (or in
+   the centre channel of 5.1/7.1): Levelo takes what is common to left and right in the
+   voice band, removes the steady part (music and effects in the centre), and a small
+   speech detector, fitted on film soundtracks with known dialogue, tells when someone
+   is talking.
+3. **Measures perceived loudness** with K-weighting (the ITU-R BS.1770 broadcast
+   standard): of the voices, held between lines, and of everything else.
+4. **Computes a correction**: the voices go to a reference level (that's why every source
+   ends up the same); music and action may be only a few dB louder than the voices; sudden
+   hits are cut at once; after a loud scene the volume comes back in about half a
+   second so the next line is heard. It never boosts silence.
+5. **Applies it to the per-app volumes** (the Windows volume mixer), not to the master
+   volume, so your volume slider stays yours. To be able to *raise* audio it keeps apps up
+   to 15 dB lower and raises the master by the same amount, so overall loudness doesn't
+   change. New apps are lowered as soon as they open their audio.
+6. **Restores everything** when you pause, quit, uninstall, switch audio device, or even
    after a crash (on the next start).
 
 Because the captured audio is already attenuated by the volumes the app sets, the
 measurement subtracts them to see the *original* signal. That avoids the feedback loop
 that makes simpler auto-volume tools oscillate.
 
-**Limitation:** the very first 10–30 ms of a sudden hit get through before the cut, a
-short "tick" rather than a full blast. Removing that would need a virtual audio driver,
-which is on the roadmap as an optional mode.
+**Limitations:** the very first 10–30 ms of a sudden hit get through before the cut, a
+short "tick" rather than a full blast. And Levelo changes the volume, not the mix: when
+someone talks *over* loud music it keeps the scene a bit louder so the words are not
+pushed down, but it can't separate the voice from the music. Both would need a virtual
+audio driver, which is on the roadmap as an optional mode.
 
 ## FAQ
 
@@ -149,6 +175,7 @@ src/levelo/   dsp.py (leveling algorithm) · engine.py (Windows audio) · ui.py 
                     i18n.py (translations) · winsys.py (autostart, single instance, theme)
 packaging/          Inno Setup script + PyInstaller entry point
 tests/              simulated movie soundtrack through the leveler
+tools/film_bench.py benchmark on a real film soundtrack (Tears of Steel, CC-BY)
 ```
 
 ## Contributing

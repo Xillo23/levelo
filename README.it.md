@@ -25,8 +25,12 @@ La solita storia: alzi il volume per capire i dialoghi e alla prima scena d'azio
 sfondi i timpani. **Levelo** risolve il problema: sta nell'area di notifica e
 tiene tutto a un livello comodo, in tempo reale.
 
-- 💥 **Abbassa le parti forti in 10-30 ms**: esplosioni, spari, musica improvvisa.
-- 🗣️ **Alza dolcemente le parti deboli**: sussurri e dialoghi bassi diventano comprensibili.
+- 🗣️ **Prima i dialoghi**: Levelo trova le voci (il centro del mix, o il canale centrale
+  del 5.1/7.1) e tiene *ogni battuta* allo stesso livello comodo.
+- 💥 **L'azione mai molto più forte delle voci**: musica, esplosioni e spari restano a pochi
+  dB dai dialoghi, e i colpi improvvisi vengono tagliati in 10-30 ms.
+- 📺 **Stesso risultato con qualsiasi sorgente**: un film basso, un video YouTube forte, un
+  servizio di streaming che suona basso, il player al 30%: le voci arrivano allo stesso livello.
 - 🎚️ **Usi il volume di Windows come sempre**: tasti, barra delle applicazioni, casse. Non c'è uno slider in più.
 - 🌙 **Tre intensità**: *Leggero*, *Normale* e *Notte* (tutto quasi allo stesso livello).
 - 🎧 **Le chiamate restano com'erano**: guardi un film con gli amici su Discord, Teams, Zoom o WhatsApp? Le loro voci tengono il loro volume e non fanno abbassare il film.
@@ -34,6 +38,18 @@ tiene tutto a un livello comodo, in tempo reale.
 - 🧩 **Scegli le app**: tutte le app che usano l'audio sono in elenco, con un interruttore per lasciarle stare.
 - 🪶 **Leggero e privato**: niente account, nessun tracciamento, niente driver. L'audio non esce dal PC.
 - 🌍 **11 lingue**.
+
+### Misurato su un film vero
+
+Su un mix "da blockbuster" del film libero *Tears of Steel* (dialoghi calmi, scene di
+battaglia con voci sotto la musica forte; si riproduce con `python tools/film_bench.py`):
+
+| | Azione più forte dei dialoghi di | Livello dei dialoghi, sorgente da +8 a −12 dB |
+|---|---|---|
+| Senza Levelo | 14,4 dB | cambia di 20 dB |
+| Levelo 0.9.8 | 7,9 dB | cambia di 4,4 dB |
+| **Levelo 0.10 — Normale** | **5,7 dB** | **cambia di 0,2 dB** |
+| **Levelo 0.10 — Notte** | **4,4 dB** | **cambia di 0,2 dB** |
 
 <div align="center">
 <img src="docs/settings.it.png" width="720" alt="Impostazioni di Levelo">
@@ -59,21 +75,32 @@ Non devi fare niente. Il click sull'icona apre il pannello, dove trovi:
 Il click destro apre il menu: intensità, impostazioni, lingua, avvio automatico, esci.
 
 > **Consiglio:** per alzare le voci basse serve un po' di margine. Se il volume di Windows
-> è al 100%, abbassalo un po' e alza le casse, la TV o il monitor. Il pannello te lo segnala.
+> è al 100% le scene forti vengono comunque abbassate, ma le voci basse si alzano poco:
+> metti Windows a circa 50% e alza casse, TV o monitor. Levelo te lo segnala una volta.
 
 ## Come funziona
 
 1. **Ascolta** l'audio in uscita del PC (loopback WASAPI) a blocchi di 10 ms.
-2. **Misura il volume percepito** con la pesatura K (standard ITU-R BS.1770) e ignora le
-   pause tra le parole.
-3. **Calcola la correzione**:
-   - taglio rapido quando il suono sale;
-   - ritorno in circa 1 s dopo una scena forte;
-   - risalita lenta delle parti deboli;
+2. **Trova le voci**: nei film i dialoghi stanno al centro del mix stereo (o nel canale
+   centrale del 5.1/7.1). Levelo prende ciò che è uguale a sinistra e a destra nella banda
+   della voce, toglie la parte stabile (musica ed effetti al centro) e un piccolo
+   rilevatore di parlato, addestrato su colonne sonore di film, capisce quando qualcuno parla.
+3. **Misura il volume percepito** con la pesatura K (standard ITU-R BS.1770): delle voci,
+   tenuto tra una battuta e l'altra, e di tutto il resto.
+4. **Calcola la correzione**:
+   - le voci vanno a un livello di riferimento (per questo ogni sorgente suona uguale);
+   - musica e azione possono essere solo pochi dB più forti delle voci;
+   - i colpi improvvisi vengono tagliati subito, e dopo una scena forte il volume torna in
+     circa mezzo secondo per sentire la battuta successiva;
    - il silenzio non viene mai alzato.
-4. **La applica al volume delle singole app** (mixer di Windows), non al volume generale.
-5. **Rimette tutto com'era** in pausa, all'uscita, alla disinstallazione, al cambio di
+5. **La applica al volume delle singole app** (mixer di Windows), non al volume generale.
+   Le app nuove vengono abbassate appena aprono l'audio.
+6. **Rimette tutto com'era** in pausa, all'uscita, alla disinstallazione, al cambio di
    dispositivo e anche dopo un crash (al riavvio successivo).
+
+**Limiti:** i primi 10-30 ms di un colpo improvviso passano prima del taglio. E Levelo
+cambia il volume, non il mix: quando si parla *sopra* una musica forte tiene la scena un po'
+più alta per non schiacciare le parole, ma non può separare la voce dalla musica.
 
 ## Domande frequenti
 
