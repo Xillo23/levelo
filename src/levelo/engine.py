@@ -17,7 +17,8 @@ from collections import deque
 import numpy as np
 import soundcard as sc
 
-from .dsp import BLOCK, BLOCK_S, HEADROOM, HEADROOM_MIN, SR, Leveler, db_to_lin
+from .dsp import (BLOCK, BLOCK_S, HEADROOM, HEADROOM_MIN, REF_DB, REF_MAX_DB, REF_MIN_DB,
+                  SR, Leveler, db_to_lin)
 from .storage import STATE_FILE, load_json, log, save_json
 
 SESSION_MIN_DB = -60.0
@@ -33,6 +34,12 @@ CUT_DB = 1.0          # a drop this big (a bang) is written at once
 SETTLE_S = 0.5        # smaller leftovers are written after this long
 PEAKS_EVERY = 10      # blocks (10 ms) between meter reads, only during a call
 MASTER_EVERY = 25     # blocks between master volume reads
+
+# Learning the listener's usual voice level (seconds of voices heard): it
+# starts from the default and follows the first minutes of voices quickly,
+# then it is an average over the last hours of watching
+LEARN_FAST_S = 60.0
+LEARN_SLOW_S = 4 * 3600.0
 
 # Voice-call apps (process names, lowercase). By default their volume is never
 # changed and their sound does not drive the balancing: the voice of whoever
@@ -734,8 +741,12 @@ class DeviceWorker(threading.Thread):
                 # gain 0 = as loud as without Levelo; it can go up only by
                 # what the master was raised (0 if Windows was already at 100%)
                 raised = win.raised if self.enabled else HEADROOM
-                gain = self.leveler.process(orig, boost_cap=raised,
-                                            freeze=now < talk_until)
+                frozen = now < talk_until
+                self.leveler.target = eng.target()
+                gain = self.leveler.process(orig, boost_cap=raised, freeze=frozen)
+                if (self.enabled and not frozen and self.leveler.talking
+                        and self.leveler.film_db is not None):
+                    eng.learn(self.leveler.film_db, BLOCK_S)
 
                 if self.enabled:
                     target = gain - raised
@@ -785,8 +796,14 @@ class Engine(threading.Thread):
     """Starts one DeviceWorker per output device to balance: the Windows default
     device (devices=None) or the devices chosen in the settings."""
 
-    def __init__(self, enabled, preset, devices=None, call_protect=True, app_rules=None):
+    def __init__(self, enabled, preset, devices=None, call_protect=True, app_rules=None,
+                 voice_ref=None, voice_ref_s=0.0):
         super().__init__(daemon=True, name="AudioEngine")
+        # Voice level of what this listener usually watches. Their volume (and
+        # speakers) are set for it: it becomes the level all voices go to, so
+        # their usual content keeps its loudness and the rest is brought to it.
+        self.voice_ref = None if voice_ref is None else float(voice_ref)
+        self.voice_ref_s = float(voice_ref_s or 0.0)
         self.cmds = queue.Queue()
         self.want_enabled = bool(enabled)
         self.preset = preset
@@ -814,6 +831,19 @@ class Engine(threading.Thread):
         self._enum = None
 
     # ---- thread-safe API ----------------------------------------------------
+    def target(self):
+        return REF_DB if self.voice_ref is None else self.voice_ref
+
+    def learn(self, film_db, dt):
+        """Called while a film's voices are heard (balancing on). The first
+        minutes of voices move the level quickly, later it changes slowly."""
+        self.voice_ref_s += dt
+        db = max(REF_MIN_DB, min(REF_MAX_DB, film_db))
+        if self.voice_ref is None:
+            self.voice_ref = REF_DB
+        n = min(max(self.voice_ref_s, LEARN_FAST_S), LEARN_SLOW_S)
+        self.voice_ref += (db - self.voice_ref) * dt / n
+
     def set_enabled(self, on):
         self.want_enabled = bool(on)
 

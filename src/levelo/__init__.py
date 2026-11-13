@@ -1,6 +1,6 @@
 """Levelo - automatic volume leveling for Windows."""
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 BETA = True   # shown as "beta" in the panel; set False for 1.0
 
 APP_NAME = "Levelo"

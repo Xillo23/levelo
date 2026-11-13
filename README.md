@@ -33,6 +33,9 @@ notification area and keeps everything at a comfortable level in real time:
   kept within a few dB of the dialogue, and sudden hits are cut in ~10–30 ms.
 - 📺 **Same result with any source**: a quiet movie, a loud YouTube video, a streaming
   service that plays low, the player at 30%: the voices end up at the same level.
+- 🎯 **Nothing to set up, whatever your speakers**: Levelo learns the level of what you
+  usually watch (your volume is already set for it) and brings everything else to it.
+  Music and games are levelled too.
 - 🎚️ **You keep using the normal Windows volume** (keys, taskbar, speakers). There's no extra slider.
 - 🌙 **Three intensities**: *Light*, *Normal* and *Night* (everything at almost the same level, great for late-night watching).
 - 🎧 **Voice calls are left alone**: watching with friends on Discord, Teams, Zoom or WhatsApp? Their voices keep their volume and don't make the movie quieter.
@@ -53,7 +56,7 @@ scenes with voices under loud music; reproduce it with `python tools/film_bench.
 |---|---|---|
 | Without Levelo | 14.4 dB | changes by 20 dB |
 | Levelo 0.9.8 | 7.9 dB | changes by 4.4 dB |
-| **Levelo 0.10 — Normal** | **5.7 dB** | **changes by 0.2 dB** |
+| **Levelo 0.10 — Normal** | **5.9 dB** | **changes by 0.2 dB** |
 | **Levelo 0.10 — Night** | **4.4 dB** | **changes by 0.2 dB** |
 
 <div align="center">
@@ -103,7 +106,8 @@ by default: your friend's voice keeps its volume and doesn't make the movie quie
 3. **Measures perceived loudness** with K-weighting (the ITU-R BS.1770 broadcast
    standard): of the voices, held between lines, and of everything else.
 4. **Computes a correction**: the voices go to a reference level (that's why every source
-   ends up the same); music and action may be only a few dB louder than the voices; sudden
+   ends up the same), learned from what you usually watch so your usual content keeps
+   the loudness you chose; without voices (music, games) the programme level is used; music and action may be only a few dB louder than the voices; sudden
    hits are cut at once; after a loud scene the volume comes back in about half a
    second so the next line is heard. It never boosts silence.
 5. **Applies it to the per-app volumes** (the Windows volume mixer), not to the master

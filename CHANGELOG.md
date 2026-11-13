@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.1 (beta)
+
+**Works for everyone without setting anything: any speakers, any volume, any content.**
+
+- **Levelo learns your usual level.** Your speakers and your Windows volume are already
+  set for what you usually watch: Levelo now learns the voice level of that content
+  (quickly during the first minutes, then as an average over hours) and brings
+  everything else to it. If you mostly watch loud YouTube videos they are no longer
+  turned down by 10 dB (now ~5), and if you mostly watch quiet films, loud videos and
+  ads no longer blast. Nothing to configure; it is stored only on your PC.
+- **Music and games are levelled too.** Without voices, the programme level itself is
+  brought to the same level (a quiet playlist is raised up to 10 dB): a source 12 dB
+  quieter now ends up 3.4 dB quieter instead of 9.
+- **No more ambience blown up by a stray "voice".** Faint sounds were sometimes taken
+  for speech and the room tone was raised; now a voice is trusted only after a few
+  seconds of speech, and never when it is far below everything else. After a minute
+  without voices the last film's correction is forgotten.
+- Outputs with 3, 4 or 5 channels (2.1, quad, 4.1, 5.0) are folded to stereo instead
+  of reading a wrong channel as the dialogue.
+
 ## 0.10.0 (beta)
 
 **A new leveling engine, built and measured on real film soundtracks.**

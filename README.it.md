@@ -31,6 +31,9 @@ tiene tutto a un livello comodo, in tempo reale.
   dB dai dialoghi, e i colpi improvvisi vengono tagliati in 10-30 ms.
 - 📺 **Stesso risultato con qualsiasi sorgente**: un film basso, un video YouTube forte, un
   servizio di streaming che suona basso, il player al 30%: le voci arrivano allo stesso livello.
+- 🎯 **Niente da regolare, qualunque siano le tue casse**: Levelo impara il livello di ciò che
+  guardi di solito (il tuo volume è già regolato per quello) e porta tutto il resto lì.
+  Livella anche musica e giochi.
 - 🎚️ **Usi il volume di Windows come sempre**: tasti, barra delle applicazioni, casse. Non c'è uno slider in più.
 - 🌙 **Tre intensità**: *Leggero*, *Normale* e *Notte* (tutto quasi allo stesso livello).
 - 🎧 **Le chiamate restano com'erano**: guardi un film con gli amici su Discord, Teams, Zoom o WhatsApp? Le loro voci tengono il loro volume e non fanno abbassare il film.
@@ -48,7 +51,7 @@ battaglia con voci sotto la musica forte; si riproduce con `python tools/film_be
 |---|---|---|
 | Senza Levelo | 14,4 dB | cambia di 20 dB |
 | Levelo 0.9.8 | 7,9 dB | cambia di 4,4 dB |
-| **Levelo 0.10 — Normale** | **5,7 dB** | **cambia di 0,2 dB** |
+| **Levelo 0.10 — Normale** | **5,9 dB** | **cambia di 0,2 dB** |
 | **Levelo 0.10 — Notte** | **4,4 dB** | **cambia di 0,2 dB** |
 
 <div align="center">
@@ -88,7 +91,9 @@ Il click destro apre il menu: intensità, impostazioni, lingua, avvio automatico
 3. **Misura il volume percepito** con la pesatura K (standard ITU-R BS.1770): delle voci,
    tenuto tra una battuta e l'altra, e di tutto il resto.
 4. **Calcola la correzione**:
-   - le voci vanno a un livello di riferimento (per questo ogni sorgente suona uguale);
+   - le voci vanno a un livello di riferimento (per questo ogni sorgente suona uguale),
+     imparato da ciò che guardi di solito: i tuoi contenuti abituali restano al volume che
+     hai scelto; senza voci (musica, giochi) si usa il livello del programma;
    - musica e azione possono essere solo pochi dB più forti delle voci;
    - i colpi improvvisi vengono tagliati subito, e dopo una scena forte il volume torna in
      circa mezzo secondo per sentire la battuta successiva;

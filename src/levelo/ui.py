@@ -71,7 +71,9 @@ class App:
             "call_protect": True,   # never touch voice-call apps
             "app_rules": {},        # app name (lowercase) -> balance it? (only exceptions)
             "seen_apps": {},        # apps seen recently, listed in the settings
-            "headroom_tip": False})  # "Windows volume at maximum" told once
+            "headroom_tip": False,   # "Windows volume at maximum" told once
+            # voice level of what this listener usually watches (learned)
+            "voice_ref": None, "voice_ref_s": 0.0})
         s = self.settings
         s["preset"] = OLD_PRESET_NAMES.get(s["preset"], s["preset"])
         if s.pop("donated", False) and not s["donor_until"]:
@@ -85,7 +87,8 @@ class App:
         self.settings_win = None
         self.engine = Engine(s["enabled"], s["preset"],
                              s["devices"] if s["device_mode"] == "manual" else None,
-                             s["call_protect"], s["app_rules"])
+                             s["call_protect"], s["app_rules"],
+                             voice_ref=s["voice_ref"], voice_ref_s=s["voice_ref_s"])
         self.engine.start()
         self._flushed_s = 0.0
         self._flushed_peaks = 0
@@ -509,6 +512,9 @@ class App:
         s["stats_hours"] += (eng.active_s - self._flushed_s) / 3600.0
         s["stats_peaks"] += eng.peaks - self._flushed_peaks
         self._flushed_s, self._flushed_peaks = eng.active_s, eng.peaks
+        if eng.voice_ref is not None:
+            s["voice_ref"] = round(float(eng.voice_ref), 2)
+            s["voice_ref_s"] = round(float(eng.voice_ref_s), 1)
         self._save()
         if self._should_ask() and s["ask_toasted"] <= s["ask_count"]:
             s["ask_toasted"] = s["ask_count"] + 1

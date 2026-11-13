@@ -130,7 +130,7 @@ class LevelerTest(unittest.TestCase):
                 for seg in ("dialogue", "dialogue_after", "loud_music"):
                     # the first seconds are spent learning the film
                     self.assertAlmostEqual(r[seg] + g, ref[seg],
-                                           delta=2.0 if seg == "dialogue" else 1.5,
+                                           delta=4.0 if seg == "dialogue" else 1.5,
                                            msg=f"{p} {g} {seg}")
 
     def test_no_headroom_never_louder(self):

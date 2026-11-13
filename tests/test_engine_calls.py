@@ -199,6 +199,22 @@ class EngineCalls(unittest.TestCase):
         _, talk_until = run_movie(call_win, 5.0)
         self.assertGreater(talk_until, 0.0)       # the call is still noticed
 
+    def test_learns_the_usual_voice_level(self):
+        eng = engine.Engine(True, "normal")
+        self.assertEqual(eng.target(), -24.0)
+        for _ in range(int(120 / 0.01)):          # 2 minutes of loud videos
+            eng.learn(-14.0, 0.01)
+        self.assertGreater(eng.target(), -20.5)   # most of the way to the top (-18)
+        self.assertLessEqual(eng.target(), -18.0)
+        for _ in range(int(120 / 0.01)):          # then 2 minutes of a quiet film
+            eng.learn(-32.0, 0.01)
+        self.assertLess(eng.target(), -21.0)      # moves, but not all the way
+        self.assertGreater(eng.target(), -30.0)
+        old = engine.Engine(True, "normal", voice_ref=-27.0, voice_ref_s=20 * 3600)
+        for _ in range(int(60 / 0.01)):           # after hours: one minute barely moves it
+            old.learn(-15.0, 0.01)
+        self.assertLess(old.target(), -26.5)
+
     def test_should_write(self):
         self.assertTrue(engine.should_write(-3.0, 0.0))     # a bang: at once
         self.assertFalse(engine.should_write(0.5, 0.02))    # too soon
