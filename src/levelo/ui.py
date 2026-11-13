@@ -825,7 +825,7 @@ class App:
             else:
                 big, sub = t("ok_big"), t("ok_sub")
             if eng.call_app:
-                sub = t("call_sub", app=self._app_label(eng.call_app))
+                sub = t("call_sub", app=self.app_label(eng.call_app))
         self.state_big.config(text=big)
         self.state_sub.config(text=sub)
         self.preset_desc.config(text=t(f"desc_{s['preset']}"))

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.2 (beta)
+
+**Voices are never turned down any more.**
+
+- **Levelo only raises voices, it never lowers them.** Before, every voice was brought
+  to one fixed level: content with louder voices (YouTube, many series, music) was
+  turned down as a whole, so Levelo felt like "everything got quieter". Now voices
+  stay at least as loud as you set them; quiet dialogue is still raised, and only
+  what is louder than the voices (action, explosions, loud music) is brought down.
+- **Long action scenes are still held down.** After a film's voices have been heard,
+  they stay the reference for a minute and a half without dialogue, so a battle is
+  not judged by its own loudness. The film's voice level is now learned only where the
+  voice is clearly in front: loud music under a line no longer inflates it.
+- **Fixed: the panel could get stuck on an old message** (for example "Listening",
+  as if nothing was playing) for a few seconds every time a call app such as Discord,
+  WhatsApp or Telegram made a sound.
+
 ## 0.10.1 (beta)
 
 **Works for everyone without setting anything: any speakers, any volume, any content.**

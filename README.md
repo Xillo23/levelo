@@ -31,10 +31,11 @@ notification area and keeps everything at a comfortable level in real time:
   channel of 5.1/7.1) and keeps *every line* at the same comfortable level.
 - 💥 **Action never much louder than the voices**: music, explosions and gunshots are
   kept within a few dB of the dialogue, and sudden hits are cut in ~10–30 ms.
-- 📺 **Same result with any source**: a quiet movie, a loud YouTube video, a streaming
-  service that plays low, the player at 30%: the voices end up at the same level.
+- 📺 **Works with any source**: a quiet movie, a streaming service that plays low, the
+  player at 30%: quiet voices are raised. Voices are never turned down, so loud
+  content stays as you set it; only what is louder than the voices is lowered.
 - 🎯 **Nothing to set up, whatever your speakers**: Levelo learns the level of what you
-  usually watch (your volume is already set for it) and brings everything else to it.
+  usually watch (your volume is already set for it) and raises quieter content to it.
   Music and games are levelled too.
 - 🎚️ **You keep using the normal Windows volume** (keys, taskbar, speakers). There's no extra slider.
 - 🌙 **Three intensities**: *Light*, *Normal* and *Night* (everything at almost the same level, great for late-night watching).
@@ -52,12 +53,11 @@ MPC-HC, Plex, games, and more.
 On a blockbuster-like mix of the open movie *Tears of Steel* (calm dialogue, battle
 scenes with voices under loud music; reproduce it with `python tools/film_bench.py`):
 
-| | Action louder than the dialogue by | Dialogue level, source from +8 to −12 dB |
-|---|---|---|
-| Without Levelo | 14.4 dB | changes by 20 dB |
-| Levelo 0.9.8 | 7.9 dB | changes by 4.4 dB |
-| **Levelo 0.10 — Normal** | **5.9 dB** | **changes by 0.2 dB** |
-| **Levelo 0.10 — Night** | **4.4 dB** | **changes by 0.2 dB** |
+| | Action louder than the dialogue by | Quiet source (−12 dB): dialogue | Loud source (+8 dB): dialogue |
+|---|---|---|---|
+| Without Levelo | 14.4 dB | 12 dB quieter | 8 dB louder |
+| **Levelo 0.10.2 — Normal** | **7.1 dB** | **raised back, within 0.4 dB** | **kept as it is (never lowered)** |
+| **Levelo 0.10.2 — Night** | **5.4 dB** | **raised back, within 0.4 dB** | **kept as it is (never lowered)** |
 
 <div align="center">
 <img src="docs/settings.png" width="720" alt="Levelo settings">

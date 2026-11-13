@@ -121,17 +121,23 @@ class LevelerTest(unittest.TestCase):
         self.assertLess(spread["normal"], spread["light"])
 
     def test_same_result_at_any_source_level(self):
-        """A quiet streaming service, a loud one, the player at 30%: the
-        voices end up at the same level."""
+        """A quiet streaming service or the player at 30%: the voices are
+        raised to the same level. A louder source keeps its voices (they are
+        never lowered), only what is louder than them is brought down."""
         for p in ("normal", "night"):
             ref = self.r[p]
-            for g in (-12.0, 6.0):
-                r = run(p, gain_db=g)
-                for seg in ("dialogue", "dialogue_after", "loud_music"):
-                    # the first seconds are spent learning the film
-                    self.assertAlmostEqual(r[seg] + g, ref[seg],
-                                           delta=4.0 if seg == "dialogue" else 1.5,
-                                           msg=f"{p} {g} {seg}")
+            r = run(p, gain_db=-12.0)
+            for seg in ("dialogue", "dialogue_after", "loud_music"):
+                # the first seconds are spent learning the film
+                self.assertAlmostEqual(r[seg] - 12.0, ref[seg],
+                                       delta=4.0 if seg == "dialogue" else 1.5,
+                                       msg=f"{p} -12 {seg}")
+            r = run(p, gain_db=6.0)
+            for seg in ("dialogue", "dialogue_after"):
+                self.assertGreater(r[seg] + 6.0, ref[seg] - 1.5, f"{p} +6 {seg}")
+                src = level(dict(SEGMENTS)[seg][4800:]) + 6.0
+                self.assertGreater(r[seg] + 6.0, src - 1.5, f"{p} +6 {seg}: voices lowered")
+            self.assertLess(r["loud_music"], r["dialogue"] + PRESETS[p]["allow"] + 4.5, p)
 
     def test_no_headroom_never_louder(self):
         """Windows volume already at 100%: nothing can be raised, but the

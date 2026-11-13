@@ -31,6 +31,7 @@ LEAK = 0.12                       # share of loud music/effects seen as "centre 
 DLG_RISE = 10 ** (8.0 * BLOCK_S / 10)   # voice level rises at most 8 dB/s
 PROG_BOOST = 10.0                 # max raise of a quiet source without voices
 WARMUP = 150                      # blocks (1.5 s) before trusting the speech detector
+FRONT = 0.8                       # voice about as loud as everything else: "in front"
 ME_SUB = 0.8                      # share of the voice taken out for the ceiling
 
 # Intensity presets.
@@ -257,11 +258,18 @@ class Leveler:
         # dialogue is trusted only after a few seconds of it in the last
         # minute: a stray "voice" in music or ambience changes nothing
         trust = max(0.0, min(1.0, (self.evidence - 1.5) / 2.0))
+        # Voices are only ever RAISED towards the target, never lowered: a
+        # source with louder voices (YouTube, many series) keeps them as the
+        # listener set them, and only what is louder than its voices is cut.
         ref = T
-        if self.film_p is not None and trust > 0.5:
-            ref = min(T, pow_to_db(self.film_p) + DLG_CAL + min(P["max_boost"], boost_cap))
+        # (a film whose voices were heard in the last minutes keeps them as
+        # the reference through long action scenes without dialogue)
+        if self.film_p is not None and (trust > 0.5 or self.since_speech < 90.0):
+            v = pow_to_db(self.film_p) + DLG_CAL
+            ref = v + max(0.0, min(T - v, P["max_boost"], boost_cap))
         elif self.prog_p is not None:
-            ref = min(T, pow_to_db(self.prog_p) + min(PROG_BOOST, boost_cap))
+            v = pow_to_db(self.prog_p)
+            ref = v + max(0.0, min(T - v, PROG_BOOST, boost_cap))
         self.ref = ref
         ceiling = ref + P["allow"]
         fast_db = pow_to_db(max(p_win, p_blk * 0.7))
@@ -324,7 +332,10 @@ class Leveler:
                     self.dgap = 0.0
                 new = self.dlg_p + (self.dv_s - self.dlg_p) * tc(1.0)
                 self.dlg_p = min(new, self.dlg_p * DLG_RISE)   # a bang is not a voice
-                self.film_p += (self.dlg_p - self.film_p) * tc(10.0)
+                # the film's voice level is learned only where the voice is
+                # clearly in front (in busy scenes the music inflates it)
+                if self.dv_s > FRONT * p_win:
+                    self.film_p += (self.dlg_p - self.film_p) * tc(10.0)
             else:
                 self.dgap += BLOCK_S
             self.film_db = pow_to_db(self.film_p) + DLG_CAL
@@ -350,7 +361,7 @@ class Leveler:
         film_base = 0.0
         if self.film_p is not None:
             fade = max(0.0, min(1.0, 1.0 - (self.since_speech - 30.0) / 60.0))
-            film_base = (T - (pow_to_db(self.film_p) + DLG_CAL)) * P["dlg"]
+            film_base = max(0.0, T - (pow_to_db(self.film_p) + DLG_CAL)) * P["dlg"]
         # no voices for a while (music, a game): the programme level itself
         # (~8 s, quiet moments ignored) is brought to the target, so a quiet
         # playlist is raised like a quiet film (but never near-silence)
@@ -363,7 +374,7 @@ class Leveler:
         amb = base + max(0.0, min((T - base - short_db) * P["ratio"], P["amb_boost"]))
         if self.dlg_p is not None and self.since_speech < 12.0:
             self.dlg_db = pow_to_db(self.dlg_p) + DLG_CAL
-            dlg = (T - self.dlg_db) * P["dlg"]
+            dlg = max(0.0, T - self.dlg_db) * P["dlg"]
             # trust the voice level fully for 4 s after the last line, then
             # fade to the no-voice behaviour
             w = 1.0 if self.since_speech < 4.0 else max(0.0, 1.0 - (self.since_speech - 4.0) / 8.0)
