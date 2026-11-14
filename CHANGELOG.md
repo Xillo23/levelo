@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.3 (beta)
+
+**Tested on 3,700 hours of simulated viewing: 13 different films (action, horror,
+comedy, westerns, animation), every preset, quiet and loud sources.**
+
+- **Calm dialogue is no longer turned down.** In dialogue scenes Levelo now follows
+  the voice you hear right now instead of an older average of the film, which could
+  stay stuck on a quiet first line and make every normal line look "too loud".
+  Measured: calm dialogue went from being lowered 2-4 dB up to 90% of the time to
+  about 0 dB with the Normal preset.
+- **Voices in busy scenes stay as clear as in the original mix** (before, Levelo made
+  them a few dB quieter while holding the action down).
+- The syllables of a calm line are no longer mistaken for sudden hits.
+- No "nothing playing" while something plays and no volume pumping, on every film.
+
 ## 0.10.2 (beta)
 
 **Voices are never turned down any more.**

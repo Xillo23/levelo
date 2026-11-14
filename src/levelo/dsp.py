@@ -32,6 +32,8 @@ DLG_RISE = 10 ** (8.0 * BLOCK_S / 10)   # voice level rises at most 8 dB/s
 PROG_BOOST = 10.0                 # max raise of a quiet source without voices
 WARMUP = 150                      # blocks (1.5 s) before trusting the speech detector
 FRONT = 0.8                       # voice about as loud as everything else: "in front"
+DLG_LEAD = 4.0                    # current voice may lead the film average by this much
+VOICE_PEAK = 6.0                  # syllables of a calm line are not hits
 ME_SUB = 0.8                      # share of the voice taken out for the ceiling
 
 # Intensity presets.
@@ -266,6 +268,10 @@ class Leveler:
         # the reference through long action scenes without dialogue)
         if self.film_p is not None and (trust > 0.5 or self.since_speech < 90.0):
             v = pow_to_db(self.film_p) + DLG_CAL
+            if self.dlg_p is not None and self.since_speech < 4.0 and trust > 0.5:
+                # in a dialogue scene: the voice heard now (the film average
+                # lags behind and must not make a normal line look loud)
+                v = max(v, min(pow_to_db(self.dlg_p) + DLG_CAL, v + DLG_LEAD))
             ref = v + max(0.0, min(T - v, P["max_boost"], boost_cap))
         elif self.prog_p is not None:
             v = pow_to_db(self.prog_p)
@@ -386,6 +392,15 @@ class Leveler:
         # more while someone talks over it, so the words are not pushed down)
         loud_db = max(pow_to_db(self.me_s), pow_to_db(self.mom_p) - 1.0)
         desired = min(desired, ceiling + P["busy"] * min(1.0, self.speech) - loud_db)
+        # A calm line with the voice clearly in front: what the ceiling and the
+        # peak limit "see" is the voice itself (its syllables), not action.
+        # Never push such a voice below where it should be.
+        front = (self.talking and trust > 0.5 and self.dlg_p is not None
+                 and self.since_speech < 4.0 and self.dv_s > FRONT * self.short_p
+                 and p_win < 4.0 * self.short_p)
+        if front:
+            desired = max(desired, max(0.0, T - self.dlg_db) * P["dlg"])
+            peak_limit += VOICE_PEAK
         if short_db < sil + 6:
             desired = min(desired, self.gain)
         desired = max(-P["max_cut"], min(P["max_boost"], boost_cap, desired))
