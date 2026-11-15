@@ -26,15 +26,19 @@ REF_DB = -24.0                    # where the voices go (K-weighted dB, pre-volu
 REF_MIN_DB, REF_MAX_DB = -30.0, -18.0   # ...or the listener's own usual level (Leveler.target)
 HEADROOM = 15.0                   # dB of master raise wanted, to be able to raise voices
 HEADROOM_MIN = 6.0                # less than this available: tell the user once
-DLG_CAL = -1.0                    # centre-voice estimate -> dialogue loudness
-LEAK = 0.12                       # share of loud music/effects seen as "centre voice"
+DLG_CAL = 0.37                    # centre-voice estimate -> dialogue loudness
+LEAK = 0.21                       # share of loud music/effects seen as "centre voice"
 DLG_RISE = 10 ** (8.0 * BLOCK_S / 10)   # voice level rises at most 8 dB/s
 PROG_BOOST = 10.0                 # max raise of a quiet source without voices
 WARMUP = 150                      # blocks (1.5 s) before trusting the speech detector
-FRONT = 0.8                       # voice about as loud as everything else: "in front"
-DLG_LEAD = 4.0                    # current voice may lead the film average by this much
-VOICE_PEAK = 6.0                  # syllables of a calm line are not hits
-ME_SUB = 0.8                      # share of the voice taken out for the ceiling
+FRONT = 0.97                      # voice about as loud as everything else: "in front"
+DLG_LEAD = 1.0                    # current voice may lead the film average by this much
+VOICE_PEAK = 3.1                  # syllables of a calm line are not hits
+# speech detector: weights of (share, voice/centre, voice modulation,
+# total modulation, bias), and the probability above which it is speech
+SPEECH_W = (0.278, 0.398, 0.987, -0.259, -1.616)
+SPEECH_TH = 0.57
+ME_SUB = 0.95                     # share of the voice taken out for the ceiling
 
 # Intensity presets.
 #   allow:     how much louder than the voices music/action may be (dB)
@@ -43,12 +47,12 @@ ME_SUB = 0.8                      # share of the voice taken out for the ceiling
 #   ratio, amb_boost: how sound without voices is raised (gently)
 #   dlg:       how much of the voice correction is applied
 PRESETS = {
-    "light":  dict(max_boost=14.0, max_cut=24.0, allow=7.0, busy=3.0, peak=13.0,
-                   ratio=0.5, amb_boost=4.0, dlg=1.0),
-    "normal": dict(max_boost=14.0, max_cut=30.0, allow=4.0, busy=3.0, peak=11.0,
-                   ratio=0.7, amb_boost=6.0, dlg=1.0),
-    "night":  dict(max_boost=16.0, max_cut=36.0, allow=2.0, busy=2.0, peak=10.0,
-                   ratio=0.85, amb_boost=7.0, dlg=1.0),
+    "light":  dict(max_boost=14.0, max_cut=24.0, allow=8.8, busy=2.3, peak=16.0,
+                   ratio=0.8, amb_boost=4.0, dlg=1.0),
+    "normal": dict(max_boost=14.0, max_cut=30.0, allow=5.3, busy=2.0, peak=16.0,
+                   ratio=0.47, amb_boost=4.5, dlg=1.0),
+    "night":  dict(max_boost=16.0, max_cut=36.0, allow=3.2, busy=1.3, peak=12.0,
+                   ratio=0.92, amb_boost=8.2, dlg=1.0),
 }
 DEFAULT_PRESET = "normal"
 
@@ -211,7 +215,7 @@ class Leveler:
 
     @property
     def talking(self):
-        return self.speech > 0.5
+        return self.speech > SPEECH_TH
 
     def _speech(self, tot, cen, cen_v):
         """Probability that someone is talking, from four clues (weights fitted
@@ -230,8 +234,9 @@ class Leveler:
         self.env_t += (t - self.env_t) * 0.064
         self.mod_v += ((v - self.env_v) ** 2 - self.mod_v) * 0.02   # ~0.5 s
         self.mod_t += ((t - self.env_t) ** 2 - self.mod_t) * 0.02
-        z = (0.278 * self.f_share + 0.398 * self.f_vr + 0.987 * math.sqrt(self.mod_v)
-             - 0.259 * math.sqrt(self.mod_t) - 1.616)
+        w = SPEECH_W
+        z = (w[0] * self.f_share + w[1] * self.f_vr + w[2] * math.sqrt(self.mod_v)
+             + w[3] * math.sqrt(self.mod_t) + w[4])
         return _sig(z)
 
     def _silence(self):
@@ -325,7 +330,7 @@ class Leveler:
         # a voice is never far below everything else: very quiet "voices"
         # (noise, reverb tails, faint ambience) are not dialogue
         floor_db = sil if self.prog_p is None else max(sil, pow_to_db(self.prog_p) - 25.0)
-        if sp > 0.5 and pow_to_db(cen) > floor_db:
+        if sp > SPEECH_TH and pow_to_db(cen) > floor_db:
             self.since_speech = 0.0
             self.evidence += BLOCK_S
             if self.dlg_p is None:

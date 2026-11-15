@@ -47,12 +47,11 @@ tiene tutto a un livello comodo, in tempo reale.
 Su un mix "da blockbuster" del film libero *Tears of Steel* (dialoghi calmi, scene di
 battaglia con voci sotto la musica forte; si riproduce con `python tools/film_bench.py`):
 
-| | Azione più forte dei dialoghi di | Livello dei dialoghi, sorgente da +8 a −12 dB |
-|---|---|---|
-| Senza Levelo | 14,4 dB | cambia di 20 dB |
-| Levelo 0.9.8 | 7,9 dB | cambia di 4,4 dB |
-| **Levelo 0.10 — Normale** | **5,9 dB** | **cambia di 0,2 dB** |
-| **Levelo 0.10 — Notte** | **4,4 dB** | **cambia di 0,2 dB** |
+| | Azione più forte dei dialoghi di | Sorgente bassa (−12 dB): dialoghi | Sorgente forte (+8 dB): dialoghi |
+|---|---|---|---|
+| Senza Levelo | 14,4 dB | 12 dB più bassi | 8 dB più forti |
+| **Levelo 0.10.4 — Normale** | **8,6 dB** | **rialzati, entro 0,8 dB** | **lasciati come sono (entro 0,3 dB)** |
+| **Levelo 0.10.4 — Notte** | **6,8 dB** | **rialzati, entro 0,8 dB** | **lasciati come sono (entro 0,6 dB)** |
 
 <div align="center">
 <img src="docs/settings.it.png" width="720" alt="Impostazioni di Levelo">

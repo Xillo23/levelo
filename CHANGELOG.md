@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.4 (beta)
+
+**Tuned on hours of films with known dialogue, checked on a film it never saw.**
+
+Every leveling setting was re-tuned automatically on synthetic films with known
+dialogue (voices from classic films over real music and effects, stereo and 5.1) and
+then checked on *Tears of Steel*, which the tuning never saw: 25% closer to the ideal.
+
+- **Voices in busy scenes are clearer**: about 1 dB louder over loud music and effects
+  than in 0.10.3, closer to the original mix.
+- **Only as much as needed**: films that are already well mixed are left almost as
+  they are (within 0.5 dB on old dialogue films); cinema mixes are brought to the
+  preset's limit. Action above the dialogue on a blockbuster mix: 8.6 dB with Normal,
+  6.8 dB with Night (14.4 dB without Levelo), and about the same at any source volume.
+- Better at telling speech from music: fewer music passages taken for dialogue.
+- New, only on your PC: `%APPDATA%\Levelo\listening.log` keeps one line per minute of
+  how Levelo behaved (volume changes, how much speech it heard). No audio, nothing is
+  sent; it helps when you report a problem.
+- Honest note: with a very quiet source (−12 dB) the voices are raised back within
+  0.8 dB of the normal level (0.10.3: 0.4 dB).
+
 ## 0.10.3 (beta)
 
 **Tested on 3,700 hours of simulated viewing: 13 different films (action, horror,

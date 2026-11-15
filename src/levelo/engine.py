@@ -19,7 +19,7 @@ import soundcard as sc
 
 from .dsp import (BLOCK, BLOCK_S, HEADROOM, HEADROOM_MIN, REF_DB, REF_MAX_DB, REF_MIN_DB,
                   SR, Leveler, db_to_lin)
-from .storage import STATE_FILE, load_json, log, save_json
+from .storage import DATA_DIR, STATE_FILE, load_json, log, save_json
 
 SESSION_MIN_DB = -60.0
 
@@ -578,6 +578,59 @@ def should_write(delta_db, since_s):
     return since_s >= SETTLE_S and abs(delta_db) > 0.05
 
 
+LISTEN_FILE = os.path.join(DATA_DIR, "listening.log")
+
+
+class ListenStats:
+    """One line per minute of listening, kept only on this PC: how Levelo
+    behaved (gain, speech heard, loud parts). No audio, nothing is sent.
+    Used to check the leveling on real films and services."""
+
+    def __init__(self):
+        self.last = time.monotonic()
+        self._clear()
+
+    def _clear(self):
+        self.g, self.inp = [], []
+        self.talk = self.loud = 0
+
+    def add(self, gain, lev):
+        if lev.state == "silence":
+            return
+        self.g.append(gain)
+        self.inp.append(lev.in_db)
+        self.talk += lev.talking
+        self.loud += lev.state == "loud"
+
+    def flush(self, now, win, preset, raised, lev):
+        if now - self.last < 60.0:
+            return
+        self.last = now
+        try:
+            if len(self.g) >= 1000:            # at least 10 s of sound this minute
+                g, x = np.array(self.g), np.array(self.inp)
+                out = x + g
+                apps = sorted({s.name for s in win.sessions.values()
+                               if s.playing and not win.is_excluded(s.name)})
+                row = {"t": time.strftime("%Y-%m-%d %H:%M"), "apps": apps, "preset": preset,
+                       "raised": round(raised, 1), "sound_s": round(len(g) * BLOCK_S, 1),
+                       "gain": [round(float(np.percentile(g, q)), 1) for q in (1, 10, 50, 90, 99)],
+                       "in": [round(float(np.percentile(x, q)), 1) for q in (10, 50, 95, 99)],
+                       "out": [round(float(np.percentile(out, q)), 1) for q in (10, 50, 95, 99)],
+                       "talk_pct": round(100.0 * self.talk / len(g), 1),
+                       "loud_pct": round(100.0 * self.loud / len(g), 1),
+                       "voice_db": None if lev.film_db is None else round(lev.film_db, 1),
+                       "target": round(lev.target, 1), "ref": round(lev.ref, 1)}
+                os.makedirs(DATA_DIR, exist_ok=True)
+                if os.path.exists(LISTEN_FILE) and os.path.getsize(LISTEN_FILE) > 500_000:
+                    os.replace(LISTEN_FILE, LISTEN_FILE + ".old")
+                with open(LISTEN_FILE, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(row) + "\n")
+        except Exception as exc:
+            log(f"listening stats: {type(exc).__name__}: {exc}")
+        self._clear()
+
+
 class DeviceWorker(threading.Thread):
     """Capture + balancing of ONE output device (its own thread and COM objects)."""
 
@@ -600,6 +653,7 @@ class DeviceWorker(threading.Thread):
         self.active_s = 0.0
         self.peaks = 0
         self.fails = 0            # failures in a row: wait longer each time
+        self.stats = ListenStats()
 
     def stop(self):
         self.alive = False
@@ -749,6 +803,8 @@ class DeviceWorker(threading.Thread):
                     eng.learn(self.leveler.film_db, BLOCK_S)
 
                 if self.enabled:
+                    self.stats.add(gain, self.leveler)
+                    self.stats.flush(now, win, eng.preset, raised, self.leveler)
                     target = gain - raised
                     if should_write(target - win.session_db, now - last_write):
                         last_write = now
