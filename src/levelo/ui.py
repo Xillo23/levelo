@@ -17,7 +17,7 @@ from . import APP_NAME, APP_ID, BETA, __version__
 from . import DONATE_URL as DEFAULT_DONATE_URL
 from . import REPO_URL as DEFAULT_WEBSITE
 from . import cardstyle, i18n, winsys
-from .dsp import DEFAULT_PRESET, PRESETS
+from .dsp import DEFAULT_PRESET, PRESETS, REF_MAX_DB, REF_MIN_DB, V_OFF0
 from .engine import CALL_APPS, Engine
 from .settings_ui import (SettingsWindow, prewarm_apps, remember_apps,
                           split_device_name)
@@ -69,11 +69,13 @@ class App:
             "devices": [],          # output device ids chosen in the settings
             "device_names": {},     # their names, shown while they are disconnected
             "call_protect": True,   # never touch voice-call apps
+            "no_win_ducking": True,  # Windows must not turn the movie down in calls
             "app_rules": {},        # app name (lowercase) -> balance it? (only exceptions)
             "seen_apps": {},        # apps seen recently, listed in the settings
             "headroom_tip": False,   # "Windows volume at maximum" told once
             # voice level of what this listener usually watches (learned)
-            "voice_ref": None, "voice_ref_s": 0.0})
+            "voice_ref": None, "voice_ref_s": 0.0,
+            "voice_cal": 0})        # 1 = voice_ref is on the 0.10.5 voice scale
         s = self.settings
         s["preset"] = OLD_PRESET_NAMES.get(s["preset"], s["preset"])
         if s.pop("donated", False) and not s["donor_until"]:
@@ -88,7 +90,8 @@ class App:
         self.engine = Engine(s["enabled"], s["preset"],
                              s["devices"] if s["device_mode"] == "manual" else None,
                              s["call_protect"], s["app_rules"],
-                             voice_ref=s["voice_ref"], voice_ref_s=s["voice_ref_s"])
+                             voice_ref=s["voice_ref"], voice_ref_s=s["voice_ref_s"],
+                             no_win_ducking=s["no_win_ducking"])
         self.engine.start()
         self._flushed_s = 0.0
         self._flushed_peaks = 0
@@ -151,6 +154,13 @@ class App:
         s["call_protect"] = bool(s.get("call_protect", True))
         if s["stats_hours"] > 0:
             s["headroom_tip"] = True    # older versions already showed it in the panel
+        if not s.get("voice_cal"):
+            # 0.10.5 measures voices at their real loudness (about V_OFF0 dB
+            # higher than before): the level learned by older versions is
+            # moved by the same amount, so the voices stay as loud as before
+            if isinstance(s.get("voice_ref"), (int, float)):
+                s["voice_ref"] = round(max(REF_MIN_DB, min(REF_MAX_DB, s["voice_ref"] + V_OFF0)), 2)
+            s["voice_cal"] = 1
         self._save()
 
     def run(self):
@@ -408,6 +418,11 @@ class App:
         s["app_rules"] = {k: v for k, v in s["app_rules"].items() if k not in CALL_APPS}
         self._save()
         self.engine.set_app_rules(on, s["app_rules"])
+
+    def set_no_win_ducking(self, on):
+        self.settings["no_win_ducking"] = bool(on)
+        self._save()
+        self.engine.set_no_win_ducking(on)
 
     def set_app_rule(self, name, balance):
         s = self.settings

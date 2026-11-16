@@ -20,6 +20,7 @@ import soundcard as sc
 from .dsp import (BLOCK, BLOCK_S, HEADROOM, HEADROOM_MIN, REF_DB, REF_MAX_DB, REF_MIN_DB,
                   SR, Leveler, db_to_lin)
 from .storage import DATA_DIR, STATE_FILE, load_json, log, save_json
+from .ducking import WindowsDucking
 
 SESSION_MIN_DB = -60.0
 
@@ -32,7 +33,7 @@ WRITE_MIN_DB = 0.2    # ...when it moved at least this much
 IDLE_STEP_DB = 3.0    # silent apps are rewritten only when this far behind
 CUT_DB = 1.0          # a drop this big (a bang) is written at once
 SETTLE_S = 0.5        # smaller leftovers are written after this long
-PEAKS_EVERY = 10      # blocks (10 ms) between meter reads, only during a call
+PEAKS_EVERY = 4       # blocks (10 ms) between meter reads, only during a call
 MASTER_EVERY = 25     # blocks between master volume reads
 
 # Learning the listener's usual voice level (seconds of voices heard): it
@@ -55,9 +56,12 @@ CALL_APPS = {
 }
 # An excluded app "speaks" when its peak is above -50 dBFS and not far below
 # the balanced apps: then the measurement is frozen (see Leveler.process).
+# Compared as they reach the leveler: the measured signal is divided by the
+# balancing gain, which the excluded app does not get, so a call is seen
+# louder the more the movie is turned down (see CallMask).
 TALK_PEAK = 0.003
-TALK_RATIO = 0.4
-TALK_HOLD_S = 0.4
+TALK_RATIO = 0.2         # within ~14 dB of the movie: it would move the measurement
+TALK_HOLD_S = 0.5
 CALL_SHOW_S = 15.0       # the panel says "in a call" this long after the last word
 
 # Apps that usually play sound: listed in the settings as soon as they are
@@ -98,6 +102,54 @@ def load_restore():
 
 
 _procs = {}
+
+
+class CallMask:
+    """Someone in a call (an excluded app) is talking while the movie plays.
+    The capture is the movie (turned down by the balancing gain) plus the call
+    (not turned down), and it is divided by that gain to measure the movie: so
+    the call is measured louder the more the movie is turned down. In 0.10.4 a
+    friend talking after a loud scene pushed the movie down to -36 dB.
+    Here the share of the movie in what is measured is estimated from the
+    meters of the apps (before their volume) and only that share is measured;
+    the leveler also ignores the call's voices as dialogue (freeze)."""
+
+    def __init__(self):
+        self.ex_p = self.lev_p = 0.0
+        self.ex_hold = 0.0
+        self.until = 0.0
+        self.call_until = 0.0
+
+    def update(self, now, ex, lev, gain_db):
+        """ex / lev: peaks of the loudest excluded app and of the balanced
+        apps; gain_db: the balancing gain applied now. True if the call talks."""
+        ex_c = ex * db_to_lin(min(-gain_db, 60.0))   # as the leveler sees it
+        # the call starting to talk counts at once; between words (and the
+        # meter reads, which miss syllables) it is held for a second
+        e = ex_c * ex_c
+        if e >= self.ex_p:
+            self.ex_p, self.ex_hold = e, now + 1.0
+        elif now > self.ex_hold:
+            self.ex_p += (e - self.ex_p) * 0.15
+        self.lev_p += (lev * lev - self.lev_p) * 0.3
+        if ex_c > TALK_PEAK and ex_c > TALK_RATIO * lev:
+            self.until = now + TALK_HOLD_S
+            # in a conversation the next words come soon: stay ready, or the
+            # first syllable after each pause (before the next meter read)
+            # would be measured as a loud movie and cut it
+            self.call_until = now + CALL_SHOW_S
+            return True
+        return False
+
+    def active(self, now):
+        return now < self.until or now < self.call_until
+
+    def share(self):
+        """Share of the movie in the measured power (0..1)."""
+        tot = self.lev_p + self.ex_p
+        if tot <= 0.0:
+            return 1.0
+        return max(1e-8, self.lev_p / tot)
 
 
 def process_info(pid):
@@ -445,22 +497,29 @@ class WinAudio:
             if s.playing and not self.is_excluded(s.name):
                 self._set_session(key, s)
 
-    def excluded_playing(self):
-        """An excluded app (a call...) is playing: no COM call."""
-        return any(s.playing and self.is_excluded(s.name) for s in self.sessions.values())
+    def excluded_present(self):
+        """An excluded app (a call...) has an audio stream: no COM call. Not
+        only the playing ones: "playing" is read once a second, and a call
+        starting to talk in that second was measured as a loud movie (seen in
+        a user's log: the gain went to -36 within a second)."""
+        return any(s.meter is not None and self.is_excluded(s.name)
+                   for s in self.sessions.values())
 
     def peaks(self):
         """(loudest excluded app peak, its name, loudest balanced app peak).
         Session meters are measured before the app volume (verified)."""
         ex, ex_name, lev = 0.0, "", 0.0
         for s in self.sessions.values():
-            if s.meter is None or not s.playing:
+            if s.meter is None:
+                continue
+            excl = self.is_excluded(s.name)
+            if not (s.playing or excl):
                 continue
             try:
                 p = float(s.meter.GetPeakValue())
             except Exception:
                 continue
-            if self.is_excluded(s.name):
+            if excl:
                 if p > ex:
                     ex, ex_name = p, s.name
             elif p > lev:
@@ -681,7 +740,8 @@ class DeviceWorker(threading.Thread):
         eng = self.engine
         win = rec = rec_ctx = None
         last_scan = last_write = opened = 0.0
-        talk_until = call_until = 0.0
+        call_until = 0.0
+        mask = CallMask()
         rechecks = []
         call_name = ""
         tick = 0
@@ -775,10 +835,10 @@ class DeviceWorker(threading.Thread):
                 # Someone in a call (or another excluded app) is talking:
                 # do not let that voice move the movie's volume. Meters are
                 # read only while an excluded app is playing.
-                if tick % PEAKS_EVERY == 0 and win.excluded_playing():
+                if tick % PEAKS_EVERY == 0 and win.excluded_present():
                     ex, ex_name, lev = win.peaks()
-                    if ex > TALK_PEAK and ex > TALK_RATIO * lev:
-                        talk_until = now + TALK_HOLD_S
+                    applied = win.session_db + win.raised if self.enabled else 0.0
+                    if mask.update(now, ex, lev, applied):
                         if ex_name.lower() in CALL_APPS:
                             call_name, call_until = ex_name, now + CALL_SHOW_S
                 self.call_app = call_name if now < call_until else ""
@@ -795,11 +855,12 @@ class DeviceWorker(threading.Thread):
                 # gain 0 = as loud as without Levelo; it can go up only by
                 # what the master was raised (0 if Windows was already at 100%)
                 raised = win.raised if self.enabled else HEADROOM
-                frozen = now < talk_until
+                frozen = mask.active(now)
                 self.leveler.target = eng.target()
-                gain = self.leveler.process(orig, boost_cap=raised, freeze=frozen)
+                gain = self.leveler.process(orig, boost_cap=raised, freeze=frozen,
+                                            share=mask.share() if frozen else 1.0)
                 if (self.enabled and not frozen and self.leveler.talking
-                        and self.leveler.film_db is not None):
+                        and self.leveler.film_ok and self.leveler.film_db is not None):
                     eng.learn(self.leveler.film_db, BLOCK_S)
 
                 if self.enabled:
@@ -853,7 +914,7 @@ class Engine(threading.Thread):
     device (devices=None) or the devices chosen in the settings."""
 
     def __init__(self, enabled, preset, devices=None, call_protect=True, app_rules=None,
-                 voice_ref=None, voice_ref_s=0.0):
+                 voice_ref=None, voice_ref_s=0.0, no_win_ducking=True):
         super().__init__(daemon=True, name="AudioEngine")
         # Voice level of what this listener usually watches. Their volume (and
         # speakers) are set for it: it becomes the level all voices go to, so
@@ -866,6 +927,10 @@ class Engine(threading.Thread):
         self.want_devices = list(devices) if devices is not None else None
         self.call_protect = bool(call_protect)
         self.app_rules = dict(app_rules or {})
+        # Windows turns everything down by 80% when a call starts: not while
+        # Levelo is on (see ducking.py)
+        self.no_win_ducking = bool(no_win_ducking)
+        self.ducking = WindowsDucking(log)
         self.alive = True
         self.finished = threading.Event()
         self.store = None
@@ -902,6 +967,9 @@ class Engine(threading.Thread):
 
     def set_enabled(self, on):
         self.want_enabled = bool(on)
+
+    def set_no_win_ducking(self, on):
+        self.no_win_ducking = bool(on)
 
     def set_preset(self, name):
         self.preset = name
@@ -1158,8 +1226,10 @@ class Engine(threading.Thread):
                             self.error = msg
                     else:
                         fails = 0
+                self.ducking.apply(self.want_enabled and self.no_win_ducking)
                 time.sleep(0.1)
         finally:
+            self.ducking.apply(False)          # the listener's own Windows choice back
             workers = list(self.workers.values())
             for w in workers:          # all devices restore their volumes in parallel
                 w.stop()

@@ -39,6 +39,15 @@ VOICE_PEAK = 3.1                  # syllables of a calm line are not hits
 SPEECH_W = (0.278, 0.398, 0.987, -0.259, -1.616)
 SPEECH_TH = 0.57
 ME_SUB = 0.95                     # share of the voice taken out for the ceiling
+# Per-film calibration of the voice estimate (0.10.5). The centre/moving-part
+# estimate sees only part of a voice (2-8 dB less than the whole sound even in
+# calm scenes with the music far below): the voice itself was then taken for
+# music, squashed by the ceiling, and never "in front". While someone is
+# clearly talking, the gap between the whole sound and the estimate is learned
+# (its lower edge: calm lines, not lines over loud music) and added back.
+VCAL = 1.0                        # 0 = off (0.10.4 behaviour)
+V_OFF0 = 3.0                      # starting gap (dB) before a film taught it
+V_OFF_MAX = 10.0
 
 # Intensity presets.
 #   allow:     how much louder than the voices music/action may be (dB)
@@ -47,9 +56,9 @@ ME_SUB = 0.95                     # share of the voice taken out for the ceiling
 #   ratio, amb_boost: how sound without voices is raised (gently)
 #   dlg:       how much of the voice correction is applied
 PRESETS = {
-    "light":  dict(max_boost=14.0, max_cut=24.0, allow=8.8, busy=2.3, peak=16.0,
+    "light":  dict(max_boost=14.0, max_cut=24.0, allow=7.8, busy=2.3, peak=16.0,
                    ratio=0.8, amb_boost=4.0, dlg=1.0),
-    "normal": dict(max_boost=14.0, max_cut=30.0, allow=5.3, busy=2.0, peak=16.0,
+    "normal": dict(max_boost=14.0, max_cut=30.0, allow=4.3, busy=2.0, peak=16.0,
                    ratio=0.47, amb_boost=4.5, dlg=1.0),
     "night":  dict(max_boost=16.0, max_cut=36.0, allow=3.2, busy=1.3, peak=12.0,
                    ratio=0.92, amb_boost=8.2, dlg=1.0),
@@ -192,7 +201,9 @@ class Leveler:
         self.mom_p = None         # ... ~0.1 s: how a bang feels
         self.dlg_p = None         # voice level (power), held between lines
         self.dv_s = None          # voice level over the last ~0.6 s
+        self.v_off = V_OFF0       # whole sound - voice estimate in calm speech (dB)
         self.film_p = None        # voice level of the whole film (~10 s)
+        self.film_ok = False      # film_p came from real dialogue (trusted once)
         self.dgap = 0.0           # speech much below the voice level for this long
         self.blocks = 0           # blocks since reset (warm-up)
         self.f_share = -10.0      # speech detector state (see _speech)
@@ -247,16 +258,24 @@ class Leveler:
             return SILENCE_DB
         return max(SILENCE_MIN_DB, min(SILENCE_DB, pow_to_db(self.dlg_p) - 30.0))
 
-    def process(self, block, boost_cap=HEADROOM, freeze=False):
+    def process(self, block, boost_cap=HEADROOM, freeze=False, share=1.0):
         """block: mono or multichannel samples (original level).
-        freeze=True: someone in a voice call is talking. Their voice must not
-        move the movie's volume, so the measurement and the gain stay as they
-        are; only a really loud hit is cut."""
-        return self.step(*self.meter.push(block), boost_cap=boost_cap, freeze=freeze)
+        freeze=True: someone in a voice call is talking. share = estimated
+        share of the movie in the power (the rest is the call): only that is
+        measured. The call's voice must not be taken for the movie's dialogue,
+        so the speech detection and the dialogue levels are held (the time
+        does not count either: the movie's voice reference survives a call)."""
+        m = self.meter.push(block)
+        if share < 1.0:
+            m = tuple(x * share for x in m)
+        return self.step(*m, boost_cap=boost_cap, freeze=freeze)
 
     def step(self, p_win, p_blk, cen, cen_v, boost_cap=HEADROOM, freeze=False):
         P = self.p
         boost_cap = max(0.0, boost_cap)
+        voff = VCAL * self.v_off
+        cal = DLG_CAL + voff              # voice estimate -> dialogue loudness (dB)
+        vk = 10.0 ** (voff / 10.0)        # ... as a power factor
         # Where the voices will really end up: the reference, or lower when
         # they cannot be raised that much (very quiet film, Windows volume
         # already at 100%). Loud parts are limited relative to THAT, so they
@@ -271,12 +290,19 @@ class Leveler:
         ref = T
         # (a film whose voices were heard in the last minutes keeps them as
         # the reference through long action scenes without dialogue)
-        if self.film_p is not None and (trust > 0.5 or self.since_speech < 90.0):
-            v = pow_to_db(self.film_p) + DLG_CAL
+        # (only dialogue that was trusted once: a stray "voice" in a game or
+        # in music must not become the reference, or everything else would be
+        # judged "loud" next to it)
+        if trust > 0.5 and self.film_p is not None:
+            self.film_ok = True
+        elif self.since_speech >= 90.0:
+            self.film_ok = False
+        if self.film_p is not None and (trust > 0.5 or (self.film_ok and self.since_speech < 90.0)):
+            v = pow_to_db(self.film_p) + cal
             if self.dlg_p is not None and self.since_speech < 4.0 and trust > 0.5:
                 # in a dialogue scene: the voice heard now (the film average
                 # lags behind and must not make a normal line look loud)
-                v = max(v, min(pow_to_db(self.dlg_p) + DLG_CAL, v + DLG_LEAD))
+                v = max(v, min(pow_to_db(self.dlg_p) + cal, v + DLG_LEAD))
             ref = v + max(0.0, min(T - v, P["max_boost"], boost_cap))
         elif self.prog_p is not None:
             v = pow_to_db(self.prog_p)
@@ -285,15 +311,6 @@ class Leveler:
         ceiling = ref + P["allow"]
         fast_db = pow_to_db(max(p_win, p_blk * 0.7))
         peak_limit = (ref + P["peak"]) - fast_db
-
-        if freeze and self.short_p is not None:
-            if peak_limit + 12.0 < min(self.gain, 0.0):
-                self.gain += (max(-P["max_cut"] - 6.0, peak_limit) - self.gain) * tc(0.004)
-                self.hold = 0.35
-                self.state = "loud"
-            elif self.hold > 0:
-                self.hold -= BLOCK_S
-            return self.gain
 
         if self.short_p is None:
             self.short_p = self.long_p = p_win
@@ -311,6 +328,8 @@ class Leveler:
         if self.blocks < WARMUP:
             self.blocks += 1      # the band minimums need ~1.5 s to settle
             sp = 0.0
+        if freeze:
+            sp = 0.0              # a voice in a call is not the movie's dialogue
         self.speech += (sp - self.speech) * (tc(0.25) if sp > self.speech else tc(1.5))
         # voice level over the last ~0.6 s (syllables and the gaps between
         # them), minus the share that leaks in from loud music/effects
@@ -318,12 +337,16 @@ class Leveler:
         self.dv_s = dv if self.dv_s is None else self.dv_s + (dv - self.dv_s) * tc(0.6)
         # music/effects alone (most of the voice taken out), for the ceiling:
         # the voice itself must not be squashed by it
-        p_me = max(p_win - ME_SUB * dv, 0.15 * p_win)
+        p_me = max(p_win - ME_SUB * dv * vk, 0.15 * p_win)
         if self.me_s is None:
             self.me_s = self.mom_p = p_me
         self.me_s += (p_me - self.me_s) * tc(0.4)
         self.mom_p += (p_me - self.mom_p) * tc(0.1)
-        self.evidence -= self.evidence * tc(60.0)
+        # in a call the movie's voices are not heard (ignored): the time counts
+        # four times slower, so the film survives a short call but a long call
+        # (or a game during it) is not judged by the last film forever
+        slow = 0.25 if freeze else 1.0
+        self.evidence -= self.evidence * tc(60.0) * slow
         sil = self._silence()
         if p_win > 10.0 ** (sil / 10.0):
             self.prog_p = p_win if self.prog_p is None else self.prog_p + (p_win - self.prog_p) * tc(8.0)
@@ -345,13 +368,22 @@ class Leveler:
                 self.dlg_p = min(new, self.dlg_p * DLG_RISE)   # a bang is not a voice
                 # the film's voice level is learned only where the voice is
                 # clearly in front (in busy scenes the music inflates it)
-                if self.dv_s > FRONT * p_win:
+                if self.dv_s * vk > FRONT * p_win:
                     self.film_p += (self.dlg_p - self.film_p) * tc(10.0)
             else:
                 self.dgap += BLOCK_S
-            self.film_db = pow_to_db(self.film_p) + DLG_CAL
+            self.film_db = pow_to_db(self.film_p) + cal
+            if self.speech > 0.7 and self.short_p is not None:
+                # learn the gap on its lower edge: quickly down, slowly up,
+                # and not at all over loud music (more than 4 dB above it)
+                off = pow_to_db(self.short_p) - pow_to_db(self.dv_s)
+                if off < self.v_off:
+                    self.v_off += (off - self.v_off) * tc(3.0)
+                elif off < self.v_off + 4.0:
+                    self.v_off += (off - self.v_off) * tc(30.0)
+                self.v_off = max(0.0, min(V_OFF_MAX, self.v_off))
         else:
-            self.since_speech += BLOCK_S
+            self.since_speech += BLOCK_S * slow
 
         short_db = pow_to_db(self.short_p)
         long_db = pow_to_db(self.long_p)
@@ -372,7 +404,7 @@ class Leveler:
         film_base = 0.0
         if self.film_p is not None:
             fade = max(0.0, min(1.0, 1.0 - (self.since_speech - 30.0) / 60.0))
-            film_base = max(0.0, T - (pow_to_db(self.film_p) + DLG_CAL)) * P["dlg"]
+            film_base = max(0.0, T - (pow_to_db(self.film_p) + cal)) * P["dlg"]
         # no voices for a while (music, a game): the programme level itself
         # (~8 s, quiet moments ignored) is brought to the target, so a quiet
         # playlist is raised like a quiet film (but never near-silence)
@@ -384,7 +416,7 @@ class Leveler:
         base = fade * film_base + (1.0 - fade) * prog_base
         amb = base + max(0.0, min((T - base - short_db) * P["ratio"], P["amb_boost"]))
         if self.dlg_p is not None and self.since_speech < 12.0:
-            self.dlg_db = pow_to_db(self.dlg_p) + DLG_CAL
+            self.dlg_db = pow_to_db(self.dlg_p) + cal
             dlg = max(0.0, T - self.dlg_db) * P["dlg"]
             # trust the voice level fully for 4 s after the last line, then
             # fade to the no-voice behaviour
@@ -401,13 +433,17 @@ class Leveler:
         # peak limit "see" is the voice itself (its syllables), not action.
         # Never push such a voice below where it should be.
         front = (self.talking and trust > 0.5 and self.dlg_p is not None
-                 and self.since_speech < 4.0 and self.dv_s > FRONT * self.short_p
+                 and self.since_speech < 4.0 and self.dv_s * vk > FRONT * self.short_p
                  and p_win < 4.0 * self.short_p)
         if front:
             desired = max(desired, max(0.0, T - self.dlg_db) * P["dlg"])
             peak_limit += VOICE_PEAK
         if short_db < sil + 6:
             desired = min(desired, self.gain)
+        if freeze:
+            # in a call the movie's share is only estimated (on the low side,
+            # so the call never cuts it): never raised more than it already was
+            desired = min(desired, max(self.gain, 0.0))
         desired = max(-P["max_cut"], min(P["max_boost"], boost_cap, desired))
 
         # Peak protection: sudden hits are cut immediately
@@ -416,7 +452,9 @@ class Leveler:
             desired = max(-P["max_cut"] - 6.0, peak_limit)
 
         if desired < self.gain:
-            a = tc(0.004) if peak_hit else tc(0.05)
+            # (in a call the meters of the apps lag ~40 ms: a first syllable
+            # of the call must not cut the movie in 4 ms)
+            a = tc(0.05) if not peak_hit else (tc(0.03) if freeze else tc(0.004))
             self.gain += (desired - self.gain) * a
             self.hold = 0.35 if peak_hit else max(self.hold, 0.15)
             self.recovering = True

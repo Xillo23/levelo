@@ -131,9 +131,9 @@ def run_movie(win, seconds):
         if now - last_scan >= engine.POLL_S:
             last_scan = now
             win.poll(now)
-        if tick % engine.PEAKS_EVERY == 0 and win.excluded_playing():
+        if tick % engine.PEAKS_EVERY == 0 and win.excluded_present():
             ex, _n, lev = win.peaks()
-            if ex > engine.TALK_PEAK and ex > engine.TALK_RATIO * lev:
+            if engine.CallMask().update(now, ex, lev, win.session_db + HEADROOM):
                 talk_until = now + engine.TALK_HOLD_S
         if tick % engine.MASTER_EVERY == 0:
             win.master_db()
@@ -199,6 +199,19 @@ class EngineCalls(unittest.TestCase):
         _, talk_until = run_movie(call_win, 5.0)
         self.assertGreater(talk_until, 0.0)       # the call is still noticed
 
+    def test_call_seen_before_its_playing_flag(self):
+        """"Playing" is read once a second: a call that starts talking in
+        that second must already be measured (0.10.5 beta log: -36 dB)."""
+        win = fake_win(6, playing=2, excluded_playing=True)
+        win.activate()
+        run_movie(win, 2.0)
+        call_s = next(s for s in win.sessions.values() if win.is_excluded(s.name))
+        call_s.playing = False                   # flag not updated yet
+        self.assertTrue(win.excluded_present())
+        ex, name, lev = win.peaks()
+        self.assertGreater(ex, 0.0)
+        self.assertEqual(name, "discord.exe")
+
     def test_learns_the_usual_voice_level(self):
         eng = engine.Engine(True, "normal")
         self.assertEqual(eng.target(), -24.0)
@@ -226,3 +239,76 @@ class EngineCalls(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CallDoesNotPushMovieDown(unittest.TestCase):
+    """0.10.4: a friend talking in Discord after a loud scene pushed the movie
+    down to -36 dB (the capture is divided by the gain, the call is not
+    turned down). The worker's loop with the capture simulated."""
+
+    def run_call(self):
+        import numpy as np
+        sys.path.insert(0, os.path.dirname(__file__))
+        from test_dsp import at_level, speech
+        from levelo.dsp import BLOCK, SR, Leveler, db_to_lin
+        rng = np.random.default_rng(3)
+        n = SR * 16
+        film = at_level(rng.standard_normal(n), -34)          # a quiet game/movie
+        film[SR * 2:SR * 3] = at_level(rng.standard_normal(SR), -2)   # a bang
+        friend = np.zeros(n)
+        friend[SR * 4:] = speech(12, -18)[:n - SR * 4]
+        lev, mask, gain, gains = Leveler("normal"), engine.CallMask(), 0.0, []
+        for k, i in enumerate(range(0, n - BLOCK + 1, BLOCK)):
+            f, c = film[i:i + BLOCK], friend[i:i + BLOCK]
+            g = db_to_lin(gain)
+            orig = (f * g + c) / g                     # what the engine measures
+            now = k * BLOCK_S
+            if k % engine.PEAKS_EVERY == 0:
+                mask.update(now, float(np.abs(c).max()), float(np.abs(f).max()), gain)
+            fz = mask.active(now)
+            gain = lev.process(orig, boost_cap=0.0, freeze=fz, share=mask.share() if fz else 1.0)
+            gains.append(gain)
+        return np.array(gains)
+
+    def test_friend_does_not_push_movie_down(self):
+        good = self.run_call()
+        self.assertGreater(good[700:].min(), -20)    # never ducked by the call
+        self.assertGreater(good[-1], -10)            # back up after the bang
+
+
+class WindowsDuckingTest(unittest.TestCase):
+    """Levelo stops Windows' 80% ducking during calls only while it is on,
+    and gives the listener's own choice back."""
+
+    def test_on_off_and_restore(self):
+        from levelo import ducking
+        calls = []
+        orig_set, orig_choice = ducking.set_gain, ducking.user_choice
+        ducking.set_gain = calls.append
+        ducking.user_choice = lambda: 2               # the listener chose "50%"
+        try:
+            d = ducking.WindowsDucking()
+            d.apply(False)
+            self.assertEqual(calls, [])               # never touched while off
+            d.apply(True)
+            d.apply(True)
+            self.assertEqual(calls, [0.0])            # once, no repeated calls
+            d.apply(False)
+            self.assertEqual(calls, [0.0, -6.0])      # their choice back
+        finally:
+            ducking.set_gain, ducking.user_choice = orig_set, orig_choice
+
+    def test_unavailable_windows_is_left_alone(self):
+        from levelo import ducking
+        orig = ducking.set_gain
+
+        def broken(db):
+            raise OSError("no such interface")
+        ducking.set_gain = broken
+        try:
+            d = ducking.WindowsDucking()
+            d.apply(True)
+            self.assertTrue(d.broken)
+            d.apply(False)                            # no exception, nothing more
+        finally:
+            ducking.set_gain = orig

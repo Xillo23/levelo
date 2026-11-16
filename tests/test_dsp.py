@@ -91,31 +91,40 @@ class LevelerTest(unittest.TestCase):
     def setUpClass(cls):
         cls.r = {p: run(p) for p in ("light", "normal", "night")}
 
+    # 0.10.5: the voice is measured at its real (gated K) loudness, ~3 dB
+    # above the old estimate for this synthetic speech. The dialogue at -26
+    # is then already above the target (never lowered), the whisper is raised
+    # to the target, and loud parts are limited relative to the real voice.
+    VSHIFT = 3.0
+
     def test_whisper_is_raised(self):
         for p, r in self.r.items():
-            self.assertGreater(r["whisper"], -40 + (4 if p == "light" else 7), p)
+            self.assertGreater(r["whisper"], -40 + 4.5, p)
 
     def test_explosion_is_cut(self):
         for p, r in self.r.items():
-            self.assertLess(r["explosion"], -10.7 - (7 if p == "light" else 9), p)
+            cut = {"light": 3.5, "normal": 6.0, "night": 9.0}[p]
+            self.assertLess(r["explosion"], -10.7 - cut, p)
             # never much louder than the voices
             self.assertLess(r["explosion"], r["dialogue"] + PRESETS[p]["allow"] + 3, p)
 
     def test_music_is_cut(self):
         for p, r in self.r.items():
-            self.assertLess(r["loud_music"], -12 - (2 if p == "light" else 4), p)
-            self.assertLess(r["loud_music"], r["dialogue"] + PRESETS[p]["allow"] + 4.5, p)
+            cut = {"light": 0.5, "normal": 3.0, "night": 4.0}[p]
+            self.assertLess(r["loud_music"], -12 - cut, p)
+            self.assertLess(r["loud_music"], r["dialogue"] + PRESETS[p]["allow"] + 4.5 + self.VSHIFT, p)
 
     def test_voices_audible_after_explosion(self):
         for p, r in self.r.items():
-            # the line after the blast is 2 dB quieter in the source: it may
-            # stay a little quieter, but it is not buried by the explosion
-            self.assertLess(abs(r["dialogue_after"] - r["dialogue"] + 2.0), 2.0, p)
+            # the line after the blast is 2 dB quieter in the source and
+            # above the target: it keeps its level, not buried by the blast
+            src = level(dict(SEGMENTS)["dialogue_after"][4800:])
+            self.assertGreater(r["dialogue_after"], src - 1.0, p)
 
     def test_range_is_compressed(self):
         r = self.r["normal"]
         spread_out = max(r.values()) - min(r.values())
-        self.assertLess(spread_out, 30 * 0.55)
+        self.assertLess(spread_out, 30 * 0.7)
 
     def test_night_stronger_than_light(self):
         spread = {p: max(r.values()) - min(r.values()) for p, r in self.r.items()}
@@ -131,15 +140,19 @@ class LevelerTest(unittest.TestCase):
             r = run(p, gain_db=-12.0)
             for seg in ("dialogue", "dialogue_after", "loud_music"):
                 # the first seconds are spent learning the film
+                # (the voices at 0 dB are above the target and kept there,
+                # at -12 they are raised to the target: a little lower)
                 self.assertAlmostEqual(r[seg] - 12.0, ref[seg],
-                                       delta=5.5 if seg == "dialogue" else 1.5,
+                                       delta=7.0 if seg == "dialogue" else 2.5,
                                        msg=f"{p} -12 {seg}")
+            src = level(dict(SEGMENTS)["dialogue_after"][4800:])
+            self.assertGreater(r["dialogue_after"] - src, 9.0, f"{p} -12 raised")
             r = run(p, gain_db=6.0)
             for seg in ("dialogue", "dialogue_after"):
                 self.assertGreater(r[seg] + 6.0, ref[seg] - 1.5, f"{p} +6 {seg}")
                 src = level(dict(SEGMENTS)[seg][4800:]) + 6.0
                 self.assertGreater(r[seg] + 6.0, src - 1.5, f"{p} +6 {seg}: voices lowered")
-            self.assertLess(r["loud_music"], r["dialogue"] + PRESETS[p]["allow"] + 5.0, p)
+            self.assertLess(r["loud_music"], r["dialogue"] + PRESETS[p]["allow"] + 5.0 + self.VSHIFT, p)
 
     def test_no_headroom_never_louder(self):
         """Windows volume already at 100%: nothing can be raised, but the
@@ -147,8 +160,8 @@ class LevelerTest(unittest.TestCase):
         r = run("normal", cap=0.0)
         for name, s in SEGMENTS:
             self.assertLess(r[name], level(s) + 0.6, name)
-        self.assertLess(r["loud_music"], r["dialogue"] + PRESETS["normal"]["allow"] + 5.0)
-        self.assertLess(r["explosion"], r["dialogue"] + PRESETS["normal"]["allow"] + 3)
+        self.assertLess(r["loud_music"], r["dialogue"] + PRESETS["normal"]["allow"] + 5.0 + self.VSHIFT)
+        self.assertLess(r["explosion"], r["dialogue"] + PRESETS["normal"]["allow"] + 3 + self.VSHIFT)
 
     def test_silence_not_boosted(self):
         lev = Leveler("normal")
@@ -209,14 +222,33 @@ class CallFreezeTest(unittest.TestCase):
 
     def test_call_voice_does_not_move_gain(self):
         lev = Leveler("normal")
-        g0 = self.feed(lev, speech(4, -34))            # quiet movie: raised
+        movie = speech(7, -34)
+        g0 = self.feed(lev, movie[:4 * SR])            # quiet movie: raised
         self.assertGreater(g0, 3)
-        g1 = self.feed(lev, speech(3, -18), freeze=True)  # friend talking loudly
-        self.assertAlmostEqual(g1, g0, delta=0.5)
+        dlg0 = lev.dlg_db
+        # a friend talking loudly over it; the engine tells the movie's share
+        rest, friend = movie[4 * SR:], speech(3, -18)
+        share = float(np.mean(rest ** 2) / (np.mean(rest ** 2) + np.mean(friend ** 2)))
+        g1 = self.feed(lev, rest + friend, freeze=True, share=share)
+        self.assertAlmostEqual(g1, g0, delta=1.0)
+        self.assertAlmostEqual(lev.dlg_db, dlg0, delta=0.5)   # not the movie's voice
+
+    def test_stray_voice_is_not_the_reference(self):
+        """A second of something voice-like in a quiet game, then a long call:
+        that "voice" must not become the film's reference, or the game is
+        judged loud next to it and cut (seen in a user's log, 0.10.5 beta)."""
+        lev = Leveler("normal")
+        game = lambda s: at_level(rng.standard_normal(int(s * SR)), -45)
+        self.feed(lev, game(3), boost_cap=0.0)
+        self.feed(lev, speech(1.5, -62) + game(1.5) * 0.01, boost_cap=0.0)
+        g = self.feed(lev, game(60), boost_cap=0.0, freeze=True, share=0.5)
+        self.assertGreater(g, -2.0)
+        g = self.feed(lev, game(30), boost_cap=0.0)
+        self.assertGreater(g, -2.0)
 
     def test_big_hit_still_cut_during_call(self):
         lev = Leveler("normal")
-        self.feed(lev, speech(4, -34))
+        self.feed(lev, speech(6, -34))      # a film whose dialogue is trusted
         g = self.feed(lev, at_level(rng.standard_normal(SR // 2), 0), freeze=True)
         self.assertLess(g, -10)
 

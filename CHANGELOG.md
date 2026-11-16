@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.5 (beta)
+
+**Calls no longer push the movie down, and calm dialogue is protected better.**
+
+- **Voice calls (Discord, Teams, WhatsApp...)**: when a friend talked after a loud
+  scene, Levelo could take their voice for a very loud movie and turn the movie down
+  to −36 dB. Now the call's share of the sound is left out of the measurement, and the
+  call's voice is never taken for the film's dialogue.
+- **Windows' own "reduce other sounds by 80%" during calls** is switched off while
+  Levelo is balancing and given back when you pause or quit (new switch in
+  Settings → Calls, on by default). This was often the real reason the movie got
+  quieter in a call.
+- **Calm dialogue is no longer turned down.** Levelo now learns, for each film, how
+  loud its voices really are (before, it saw only part of them and sometimes squashed
+  a calm line as if it were music). On *Tears of Steel*, which the tuning never saw,
+  the result is 30% closer to the ideal than 0.10.4; calm lines turned down went from
+  up to 40% of the time (Night) to under 4%.
+- A short voice-like sound in a game or in music no longer becomes the "film's voice"
+  (it made everything else look loud and turned a quiet game down by 8-14 dB).
+- The voice level Levelo learned from what you watch is carried over, so voices stay
+  as loud as you are used to.
+- Honest note: on the blockbuster test mix the action is now 10.0 dB above the dialogue
+  with Normal and 9.1 dB with Night (0.10.4: 8.6 / 6.8; without Levelo 14.4). Normal
+  and Light now allow 1 dB less action than 0.10.4 to keep this small.
+
 ## 0.10.4 (beta)
 
 **Tuned on hours of films with known dialogue, checked on a film it never saw.**

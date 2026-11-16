@@ -56,8 +56,12 @@ scenes with voices under loud music; reproduce it with `python tools/film_bench.
 | | Action louder than the dialogue by | Quiet source (−12 dB): dialogue | Loud source (+8 dB): dialogue |
 |---|---|---|---|
 | Without Levelo | 14.4 dB | 12 dB quieter | 8 dB louder |
-| **Levelo 0.10.4 — Normal** | **8.6 dB** | **raised back, within 0.8 dB** | **kept as it is (within 0.3 dB)** |
-| **Levelo 0.10.4 — Night** | **6.8 dB** | **raised back, within 0.8 dB** | **kept as it is (within 0.6 dB)** |
+| **Levelo 0.10.5 — Normal** | **10.0 dB** | **raised by 9.4 dB** | **kept as it is (within 0.1 dB)** |
+| **Levelo 0.10.5 — Night** | **9.1 dB** | **raised by 9.4 dB** | **kept as it is (within 0.1 dB)** |
+
+0.10.5 never turns calm dialogue down (0.10.4 still did now and then); the price is a
+little more action on this mix (0.10.4: 8.6 / 6.8 dB). A quiet source is raised to
+your usual voice level, which Levelo learns from what you watch.
 
 <div align="center">
 <img src="docs/settings.png" width="720" alt="Levelo settings">

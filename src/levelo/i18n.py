@@ -664,6 +664,8 @@ _SETTINGS = {
         "calls_desc": "Call apps keep their volume, and the voice of whoever is talking "
                       "doesn't lower the movie.",
         "call_sub": "In a call on {app}: their voice is left as it is",
+        "calls_duck": "Don't let Windows turn the movie down in calls",
+        "calls_duck_desc": "When a call starts, Windows lowers every other sound by 80%. While Levelo is on it doesn't, so the movie stays balanced; your Windows setting comes back when Levelo is paused or closed. Takes effect from the next call.",
         "calls_list_title": "Recognised apps",
         "calls_browser_title": "Calls in the browser",
         "calls_browser": "Google Meet, Discord or WhatsApp in a browser tab play through the "
@@ -725,6 +727,8 @@ _SETTINGS = {
         "calls_desc": "Le app di chiamata restano al loro volume, e la voce di chi parla non "
                       "fa abbassare il film.",
         "call_sub": "In chiamata su {app}: la sua voce resta com'è",
+        "calls_duck": "Non far abbassare il film a Windows durante le chiamate",
+        "calls_duck_desc": "Quando parte una chiamata, Windows abbassa dell'80% tutti gli altri suoni. Con Levelo attivo non lo fa, così il film resta bilanciato; la tua impostazione di Windows torna quando Levelo è in pausa o chiuso. Vale dalla chiamata successiva.",
         "calls_list_title": "App riconosciute",
         "calls_browser_title": "Chiamate nel browser",
         "calls_browser": "Google Meet, Discord o WhatsApp in una scheda del browser passano dal "
@@ -788,6 +792,8 @@ _SETTINGS = {
         "calls_desc": "Las aplicaciones de llamadas mantienen su volumen, y la voz de quien "
                       "habla no baja la película.",
         "call_sub": "En llamada en {app}: su voz se queda como está",
+        "calls_duck": "Que Windows no baje la película en las llamadas",
+        "calls_duck_desc": "Cuando empieza una llamada, Windows baja un 80% todos los demás sonidos. Con Levelo activo no lo hace, así la película sigue equilibrada; tu ajuste de Windows vuelve cuando Levelo está en pausa o cerrado. Se aplica desde la próxima llamada.",
         "calls_list_title": "Aplicaciones reconocidas",
         "calls_browser_title": "Llamadas en el navegador",
         "calls_browser": "Google Meet, Discord o WhatsApp en una pestaña del navegador suenan a "
@@ -852,6 +858,8 @@ _SETTINGS = {
         "calls_desc": "Anruf-Apps behalten ihre Lautstärke, und die Stimme deines "
                       "Gesprächspartners macht den Film nicht leiser.",
         "call_sub": "Im Anruf über {app}: die Stimme bleibt unverändert",
+        "calls_duck": "Windows den Film bei Anrufen nicht leiser machen lassen",
+        "calls_duck_desc": "Wenn ein Anruf beginnt, senkt Windows alle anderen Töne um 80 %. Solange Levelo an ist, passiert das nicht, damit der Film ausgeglichen bleibt; deine Windows-Einstellung gilt wieder, wenn Levelo pausiert oder beendet ist. Gilt ab dem nächsten Anruf.",
         "calls_list_title": "Erkannte Apps",
         "calls_browser_title": "Anrufe im Browser",
         "calls_browser": "Google Meet, Discord oder WhatsApp in einem Browser-Tab laufen "
@@ -917,6 +925,8 @@ _SETTINGS = {
         "calls_desc": "Les applis d'appel gardent leur volume, et la voix de votre "
                       "interlocuteur ne baisse pas le film.",
         "call_sub": "En appel sur {app} : sa voix reste telle quelle",
+        "calls_duck": "Empêcher Windows de baisser le film pendant les appels",
+        "calls_duck_desc": "Quand un appel commence, Windows baisse tous les autres sons de 80 %. Tant que Levelo est actif, il ne le fait pas : le film reste équilibré ; votre réglage Windows revient quand Levelo est en pause ou fermé. Effectif dès le prochain appel.",
         "calls_list_title": "Applis reconnues",
         "calls_browser_title": "Appels dans le navigateur",
         "calls_browser": "Google Meet, Discord ou WhatsApp dans un onglet passent par le "
@@ -981,6 +991,8 @@ _SETTINGS = {
         "calls_desc": "Os apps de chamada mantêm o volume, e a voz de quem fala não abaixa o "
                       "filme.",
         "call_sub": "Em chamada no {app}: a voz fica como está",
+        "calls_duck": "Não deixar o Windows baixar o filme nas chamadas",
+        "calls_duck_desc": "Quando começa uma chamada, o Windows baixa em 80% todos os outros sons. Com o Levelo ativo isso não acontece, e o filme continua equilibrado; a sua configuração do Windows volta quando o Levelo é pausado ou fechado. Vale a partir da próxima chamada.",
         "calls_list_title": "Apps reconhecidos",
         "calls_browser_title": "Chamadas no navegador",
         "calls_browser": "Google Meet, Discord ou WhatsApp numa aba do navegador tocam pelo "
@@ -1045,6 +1057,8 @@ _SETTINGS = {
         "calls_desc": "Приложения для звонков сохраняют свою громкость, а голос собеседника "
                       "не делает фильм тише.",
         "call_sub": "Звонок в {app}: голос остаётся как есть",
+        "calls_duck": "Не давать Windows приглушать фильм во время звонков",
+        "calls_duck_desc": "Когда начинается звонок, Windows приглушает все остальные звуки на 80%. Пока Levelo включён, этого не происходит, и фильм остаётся сбалансированным; ваша настройка Windows возвращается, когда Levelo на паузе или закрыт. Действует со следующего звонка.",
         "calls_list_title": "Распознаваемые приложения",
         "calls_browser_title": "Звонки в браузере",
         "calls_browser": "Google Meet, Discord или WhatsApp во вкладке браузера звучат через "
@@ -1109,6 +1123,8 @@ _SETTINGS = {
         "calls_desc": "Aplikacje do rozmów zachowują swoją głośność, a głos rozmówcy nie "
                       "ścisza filmu.",
         "call_sub": "Rozmowa w {app}: głos zostaje bez zmian",
+        "calls_duck": "Nie pozwalaj Windows ściszać filmu podczas rozmów",
+        "calls_duck_desc": "Gdy zaczyna się rozmowa, Windows ścisza wszystkie inne dźwięki o 80%. Gdy Levelo jest włączone, tak się nie dzieje i film pozostaje wyrównany; Twoje ustawienie Windows wraca, gdy Levelo jest wstrzymane lub zamknięte. Działa od następnej rozmowy.",
         "calls_list_title": "Rozpoznawane aplikacje",
         "calls_browser_title": "Rozmowy w przeglądarce",
         "calls_browser": "Google Meet, Discord czy WhatsApp w karcie przeglądarki grają przez "
@@ -1171,6 +1187,8 @@ _SETTINGS = {
         "calls_desc": "Arama uygulamaları ses düzeylerini korur ve konuşan kişinin sesi filmi "
                       "kısmaz.",
         "call_sub": "{app} üzerinde aramada: ses olduğu gibi kalır",
+        "calls_duck": "Aramalarda Windows'un filmi kısmasına izin verme",
+        "calls_duck_desc": "Bir arama başladığında Windows diğer tüm sesleri %80 kısar. Levelo açıkken bunu yapmaz, böylece film dengeli kalır; Levelo duraklatıldığında veya kapatıldığında Windows ayarınız geri gelir. Bir sonraki aramadan itibaren geçerlidir.",
         "calls_list_title": "Tanınan uygulamalar",
         "calls_browser_title": "Tarayıcıdaki aramalar",
         "calls_browser": "Tarayıcı sekmesindeki Google Meet, Discord veya WhatsApp diğer her "
@@ -1230,6 +1248,8 @@ _SETTINGS = {
         "calls_protect": "不改动语音通话",
         "calls_desc": "通话应用保持原音量，对方说话也不会让电影变小声。",
         "call_sub": "正在 {app} 通话：对方的声音保持不变",
+        "calls_duck": "通话时不让 Windows 调低影片音量",
+        "calls_duck_desc": "通话开始时，Windows 会把其他所有声音调低 80%。Levelo 开启时不会这样，影片保持平衡；Levelo 暂停或关闭时，你的 Windows 设置会恢复。从下一次通话开始生效。",
         "calls_list_title": "可识别的应用",
         "calls_browser_title": "浏览器中的通话",
         "calls_browser": "浏览器标签页中的 Google Meet、Discord 或 WhatsApp 与其他内容一起通过浏览器播放，"
@@ -1286,6 +1306,8 @@ _SETTINGS = {
         "calls_protect": "音声通話には触れない",
         "calls_desc": "通話アプリは音量がそのまま保たれ、相手の声で映画の音量が下がることもありません。",
         "call_sub": "{app} で通話中：相手の声はそのままです",
+        "calls_duck": "通話中に Windows が映画の音量を下げないようにする",
+        "calls_duck_desc": "通話が始まると、Windows はほかのすべての音を 80% 下げます。Levelo がオンの間はこれを行わないので、映画のバランスが保たれます。Levelo を一時停止または終了すると Windows の設定に戻ります。次の通話から有効です。",
         "calls_list_title": "認識されるアプリ",
         "calls_browser_title": "ブラウザーでの通話",
         "calls_browser": "ブラウザーのタブで使う Google Meet、Discord、WhatsApp は、ほかの音と一緒に"

@@ -755,10 +755,13 @@ class SettingsWindow:
         app, s, px = self.app, self.app.settings, self.app.px
         c = self.card(G["calls"], t("calls_protect"), t("calls_desc"))
         sw = self.switch(c, s["call_protect"], app.set_call_protect)
+        c2 = self.card(G["calls"], t("calls_duck"), t("calls_duck_desc"))
+        sw2 = self.switch(c2, s["no_win_ducking"], app.set_no_win_ducking)
         self.card(G["apps"], t("calls_list_title"), ", ".join(CALL_NAMES))
         self.card(G["info"], t("calls_browser_title"), t("calls_browser"))
         self.para(t("calls_custom"), pady=(px(10), 0))
-        self._update = lambda: self.sync(sw.var, s["call_protect"])
+        self._update = lambda: (self.sync(sw.var, s["call_protect"]),
+                                self.sync(sw2.var, s["no_win_ducking"]))
 
     # ---------------------------------------------------------------- about
     def _page_about(self):
